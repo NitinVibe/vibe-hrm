@@ -4,13 +4,17 @@ import Header from "./Header";
 
 export default function AppShell() {
   return (
-    <div className="flex min-h-screen bg-slate-50">
+    <div className="h-screen overflow-hidden bg-transparent">
+      {/* Fixed sidebar */}
       <Sidebar />
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      {/* Main area */}
+      <div className="flex h-screen min-w-0 flex-col pl-[210px]">
+        {/* Fixed header area */}
         <Header />
 
-        <main className="flex-1 overflow-auto p-6">
+        {/* Only page content scrolls */}
+        <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 lg:p-5">
           <Outlet />
         </main>
       </div>
