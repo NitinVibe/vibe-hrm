@@ -1,0 +1,40 @@
+import {
+  ClipboardList,
+  Plus,
+} from "lucide-react";
+
+import Card from "../../components/ui/Card";
+import PageHeader from "../../components/ui/PageHeader";
+import Button from "../../components/ui/Button";
+import EmptyState from "../../components/ui/EmptyState";
+
+export default function MyRequests() {
+  return (
+    <div>
+      <PageHeader
+        title="My Requests"
+        description="Track requests submitted to HR and other departments."
+        actions={
+          <Button>
+            <Plus size={16} />
+            New Request
+          </Button>
+        }
+      />
+
+      <Card>
+        <EmptyState
+          icon={ClipboardList}
+          title="No requests"
+          description="Your submitted HR and employee service requests will appear here."
+          action={
+            <Button>
+              <Plus size={16} />
+              New Request
+            </Button>
+          }
+        />
+      </Card>
+    </div>
+  );
+}
