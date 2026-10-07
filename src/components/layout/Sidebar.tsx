@@ -85,7 +85,7 @@ export default function Sidebar() {
           to={dashboardPath}
           end
           className={({ isActive }) =>
-            `mb-1 flex h-8 items-center gap-2 rounded-lg px-2.5 text-[13px] font-medium transition ${
+            `mb-1 flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-[13px] font-medium transition ${
               isActive
                 ? "bg-indigo-50 font-semibold text-indigo-600"
                 : "text-slate-600 hover:bg-slate-50 hover:text-indigo-600"
@@ -109,14 +109,14 @@ export default function Sidebar() {
                   onClick={() =>
                     setOpenGroup(isOpen ? null : group.label)
                   }
-                  className={`flex h-8 w-full items-center justify-between rounded-lg px-2.5 text-left text-[11px] font-medium transition ${
+                  className={`flex h-9 w-full items-center justify-between rounded-lg px-2.5 text-left text-[13px] font-medium transition ${
                     isOpen
                       ? "bg-slate-50 text-slate-800"
                       : "text-slate-600 hover:bg-slate-50 hover:text-indigo-600"
                   }`}
                 >
                   <span className="flex min-w-0 items-center gap-2">
-                    <Icon size={15} strokeWidth={1.8} />
+                    <Icon size={17} strokeWidth={1.8} />
 
                     <span className="truncate">
                       {group.label}
