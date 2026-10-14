@@ -184,8 +184,14 @@ class DepartmentDesignationLogicTestCase(unittest.TestCase):
             write_check(current_user=self.emp_org1, db=self.db)
         self.assertEqual(ctx.exception.status_code, 403)
 
-        # EMPLOYEE can read
-        self.assertEqual(read_check(current_user=self.emp_org1, db=self.db), self.emp_org1)
+        # EMPLOYEE cannot read organization departments
+        with self.assertRaises(HTTPException) as ctx:
+            read_check(current_user=self.emp_org1, db=self.db)
+        self.assertEqual(ctx.exception.status_code, 403)
+
+        # ORG_ADMIN and HR can read
+        self.assertEqual(read_check(current_user=self.admin_org1, db=self.db), self.admin_org1)
+        self.assertEqual(read_check(current_user=self.hr_org1, db=self.db), self.hr_org1)
 
     def test_department_crud_and_tenancy(self):
         # 1. Empty list

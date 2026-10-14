@@ -115,12 +115,21 @@ def health_check():
 def database_health_check():
     try:
         with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
+            row = conn.execute(text("SELECT current_database();")).fetchone()
+        db_name = row[0] if row else "unknown"
+        host = engine.url.host or ""
+        is_neon = host.endswith(".neon.tech") or (".neon.tech" in host)
+        masked_host = (host[:6] + "..." + host[-10:]) if len(host) > 16 else host
         return {
             "status": "ok",
             "database": "connected",
+            "database_name": db_name,
+            "is_neon": is_neon,
+            "host": masked_host,
+            "pool_class": engine.pool.__class__.__name__,
         }
-    except Exception:
+    except Exception as exc:
+        logger.exception("Database health check failed: %s", exc)
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={

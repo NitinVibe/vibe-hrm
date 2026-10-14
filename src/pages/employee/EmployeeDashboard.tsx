@@ -1,10 +1,10 @@
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   CalendarCheck,
   CalendarDays,
   ClipboardList,
   Clock3,
-  FileText,
-  Goal,
   IndianRupee,
   ListTodo,
   UserRound,
@@ -12,48 +12,106 @@ import {
   LogOut,
   Timer,
   ArrowUpRight,
+  Loader2,
 } from "lucide-react";
 
 import Card from "../../components/ui/Card";
 import StatCard from "../../components/ui/StatCard";
 import PageHeader from "../../components/ui/PageHeader";
-// import EmptyState from "../../components/ui/EmptyState";
+import Badge from "../../components/ui/Badge";
+import { apiClient } from "../../api/client";
+import type { AttendanceRecord } from "../../types/attendance";
+import type { EmployeeSalary, Payslip } from "../../types/payroll";
+import {
+  formatDuration,
+  formatTime,
+  getStatusBadgeVariant,
+  getStatusLabel,
+  getTodayISODate,
+} from "../../lib/attendanceUtils";
+import { formatCurrency } from "../../lib/payrollUtils";
 
 export default function EmployeeDashboard() {
+  const [todayRecord, setTodayRecord] = useState<AttendanceRecord | null>(null);
+  const [salary, setSalary] = useState<EmployeeSalary | null>(null);
+  const [payslips, setPayslips] = useState<Payslip[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadEmployeeDashboard() {
+      setIsLoading(true);
+      try {
+        const todayIso = getTodayISODate();
+        const [myAtt, mySal, myPays] = await Promise.all([
+          apiClient.attendance.getMy({ limit: 5 }).catch(() => []),
+          apiClient.payroll.getMySalary().catch(() => null),
+          apiClient.payroll.getMyPayslips().catch(() => []),
+        ]);
+
+        if (isMounted) {
+          const matched = myAtt.find((a) => a.attendance_date === todayIso);
+          setTodayRecord(matched || null);
+          setSalary(mySal);
+          setPayslips(myPays);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadEmployeeDashboard();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const latestPayslip = payslips.length > 0 ? payslips[0] : null;
+
   return (
     <div className="space-y-3">
       <PageHeader
         title="My Dashboard"
-        description="Your attendance, leave, payroll, performance and work overview."
+        description="Your personal attendance, payroll, and workforce overview."
       />
 
       {/* Statistics */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
           title="Attendance"
-          value="—"
-          description="Current attendance"
+          value={
+            isLoading
+              ? "—"
+              : todayRecord
+              ? getStatusLabel(todayRecord.status)
+              : "Not Checked In"
+          }
+          description="Today's attendance"
           icon={CalendarCheck}
         />
 
         <StatCard
           title="Leave Balance"
-          value="—"
-          description="Available leave"
+          value="0"
+          description="Leave module (Phase 2)"
           icon={CalendarDays}
         />
 
         <StatCard
           title="Pending Requests"
-          value="—"
-          description="Awaiting action"
+          value="0"
+          description="Requests (Phase 2)"
           icon={ClipboardList}
         />
 
         <StatCard
           title="Tasks"
-          value="—"
-          description="Assigned tasks"
+          value="0"
+          description="Projects/Tasks (Phase 2)"
           icon={ListTodo}
         />
       </div>
@@ -69,7 +127,7 @@ export default function EmployeeDashboard() {
               </h2>
 
               <p className="mt-0.5 text-[11px] text-slate-400">
-                Check-in, check-out and working hours
+                Check-in, check-out and recorded working hours
               </p>
             </div>
 
@@ -91,8 +149,12 @@ export default function EmployeeDashboard() {
                   </span>
                 </div>
 
-                <p className="mt-2 text-lg font-bold text-slate-800">
-                  —
+                <p className="mt-2 text-sm font-bold text-slate-800">
+                  {isLoading
+                    ? "—"
+                    : todayRecord?.check_in_time
+                    ? formatTime(todayRecord.check_in_time)
+                    : "Not logged"}
                 </p>
               </div>
 
@@ -107,8 +169,12 @@ export default function EmployeeDashboard() {
                   </span>
                 </div>
 
-                <p className="mt-2 text-lg font-bold text-slate-800">
-                  —
+                <p className="mt-2 text-sm font-bold text-slate-800">
+                  {isLoading
+                    ? "—"
+                    : todayRecord?.check_out_time
+                    ? formatTime(todayRecord.check_out_time)
+                    : "—"}
                 </p>
               </div>
 
@@ -123,8 +189,12 @@ export default function EmployeeDashboard() {
                   </span>
                 </div>
 
-                <p className="mt-2 text-lg font-bold text-slate-800">
-                  —
+                <p className="mt-2 text-sm font-bold text-slate-800">
+                  {isLoading
+                    ? "—"
+                    : todayRecord?.working_minutes
+                    ? formatDuration(todayRecord.working_minutes)
+                    : "0h"}
                 </p>
               </div>
             </div>
@@ -137,19 +207,25 @@ export default function EmployeeDashboard() {
                   </p>
 
                   <p className="mt-0.5 text-[10px] text-slate-400">
-                    Today's attendance status
+                    {todayRecord ? "Live attendance recorded" : "No punch recorded today"}
                   </p>
                 </div>
 
-                <span className="rounded-full bg-slate-100 px-2 py-1 text-[9px] font-medium text-slate-400">
-                  Unavailable
-                </span>
+                {todayRecord ? (
+                  <Badge variant={getStatusBadgeVariant(todayRecord.status)}>
+                    {getStatusLabel(todayRecord.status)}
+                  </Badge>
+                ) : (
+                  <span className="rounded-full bg-slate-100 px-2 py-1 text-[9px] font-medium text-slate-500">
+                    Not Checked In
+                  </span>
+                )}
               </div>
             </div>
           </div>
         </Card>
 
-        {/* Tasks */}
+        {/* Tasks placeholder */}
         <Card className="overflow-hidden">
           <div className="flex items-center justify-between border-b border-slate-100/80 px-4 py-3">
             <div>
@@ -158,7 +234,7 @@ export default function EmployeeDashboard() {
               </h2>
 
               <p className="mt-0.5 text-[11px] text-slate-400">
-                Your assigned work
+                Assigned projects and tasks
               </p>
             </div>
 
@@ -168,71 +244,28 @@ export default function EmployeeDashboard() {
           </div>
 
           <div className="space-y-2 p-3">
-            {[
-              {
-                title: "Assigned Tasks",
-                description: "Tasks assigned to you",
-                icon: ListTodo,
-                className: "bg-blue-50 text-blue-600",
-              },
-              {
-                title: "In Progress",
-                description: "Tasks currently in progress",
-                icon: Clock3,
-                className: "bg-amber-50 text-amber-600",
-              },
-              {
-                title: "Completed",
-                description: "Recently completed tasks",
-                icon: ClipboardList,
-                className: "bg-emerald-50 text-emerald-600",
-              },
-            ].map((item) => {
-              const Icon = item.icon;
-
-              return (
-                <div
-                  key={item.title}
-                  className="flex items-center gap-3 rounded-xl border border-slate-100 p-2.5"
-                >
-                  <div
-                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${item.className}`}
-                  >
-                    <Icon size={14} />
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[11px] font-semibold text-slate-700">
-                      {item.title}
-                    </p>
-
-                    <p className="mt-0.5 text-[10px] text-slate-400">
-                      {item.description}
-                    </p>
-                  </div>
-
-                  <span className="text-lg font-bold text-slate-800">
-                    —
-                  </span>
-                </div>
-              );
-            })}
+            <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-4 text-center">
+              <p className="text-xs font-semibold text-slate-700">No active tasks</p>
+              <p className="mt-1 text-[10px] text-slate-400">
+                Project and task management module will be enabled in Phase 2.
+              </p>
+            </div>
           </div>
         </Card>
       </div>
 
       {/* Leave + Payroll */}
       <div className="grid gap-3 lg:grid-cols-2">
-        {/* Leave */}
+        {/* Leave placeholder */}
         <Card className="overflow-hidden">
           <div className="flex items-center justify-between border-b border-slate-100/80 px-4 py-3">
             <div>
               <h2 className="text-[13px] font-semibold text-slate-800">
-                Leave
+                Leave Summary
               </h2>
 
               <p className="mt-0.5 text-[11px] text-slate-400">
-                Requests and upcoming leave
+                Leave requests and balances
               </p>
             </div>
 
@@ -241,53 +274,12 @@ export default function EmployeeDashboard() {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-2 p-3">
-            <div className="rounded-xl bg-violet-50/70 p-3">
-              <p className="text-[10px] text-slate-500">
-                Available
+          <div className="p-3">
+            <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-4 text-center">
+              <p className="text-xs font-semibold text-slate-700">No leave policies assigned</p>
+              <p className="mt-1 text-[10px] text-slate-400">
+                Leave management module will be enabled in Phase 2.
               </p>
-
-              <p className="mt-2 text-lg font-bold text-slate-800">
-                —
-              </p>
-            </div>
-
-            <div className="rounded-xl bg-amber-50/70 p-3">
-              <p className="text-[10px] text-slate-500">
-                Pending
-              </p>
-
-              <p className="mt-2 text-lg font-bold text-slate-800">
-                —
-              </p>
-            </div>
-
-            <div className="rounded-xl bg-emerald-50/70 p-3">
-              <p className="text-[10px] text-slate-500">
-                Approved
-              </p>
-
-              <p className="mt-2 text-lg font-bold text-slate-800">
-                —
-              </p>
-            </div>
-          </div>
-
-          <div className="mx-3 mb-3 rounded-xl border border-slate-100 bg-slate-50/60 p-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-violet-600 shadow-sm">
-                <CalendarDays size={14} />
-              </div>
-
-              <div>
-                <p className="text-[11px] font-semibold text-slate-700">
-                  Upcoming Leave
-                </p>
-
-                <p className="mt-0.5 text-[10px] text-slate-400">
-                  No upcoming leave data available
-                </p>
-              </div>
             </div>
           </div>
         </Card>
@@ -301,7 +293,7 @@ export default function EmployeeDashboard() {
               </h2>
 
               <p className="mt-0.5 text-[11px] text-slate-400">
-                Salary and payslip information
+                Authorized salary and payslip records
               </p>
             </div>
 
@@ -313,36 +305,40 @@ export default function EmployeeDashboard() {
           <div className="p-3">
             <div className="rounded-xl bg-emerald-50/60 p-4">
               <p className="text-[10px] font-medium text-slate-500">
-                Latest Salary
+                Basic Compensation
               </p>
 
               <p className="mt-1 text-2xl font-bold text-slate-800">
-                —
+                {isLoading ? (
+                  <Loader2 size={20} className="animate-spin text-emerald-600" />
+                ) : salary ? (
+                  formatCurrency(salary.basic_salary)
+                ) : (
+                  <span className="text-sm font-medium text-slate-500">Not configured yet</span>
+                )}
               </p>
 
               <p className="mt-1 text-[10px] text-slate-400">
-                Latest payroll information
+                {salary
+                  ? `Net Salary: ${formatCurrency(salary.net_salary)} (${salary.payment_method})`
+                  : "Compensation details will display once configured by HR/Payroll Admin."}
               </p>
             </div>
 
             <div className="mt-2 grid grid-cols-2 gap-2">
               <div className="rounded-xl border border-slate-100 p-3">
-                <p className="text-[10px] text-slate-400">
-                  Payslip
-                </p>
+                <p className="text-[10px] text-slate-400">Payslips</p>
 
                 <p className="mt-1 text-[11px] font-semibold text-slate-700">
-                  Not available
+                  {payslips.length > 0 ? `${payslips.length} issued` : "None issued"}
                 </p>
               </div>
 
               <div className="rounded-xl border border-slate-100 p-3">
-                <p className="text-[10px] text-slate-400">
-                  Pay Date
-                </p>
+                <p className="text-[10px] text-slate-400">Latest Run Period</p>
 
                 <p className="mt-1 text-[11px] font-semibold text-slate-700">
-                  —
+                  {latestPayslip ? latestPayslip.period_key : "—"}
                 </p>
               </div>
             </div>
@@ -350,63 +346,73 @@ export default function EmployeeDashboard() {
         </Card>
       </div>
 
-      {/* Employee tools */}
+      {/* Employee Quick Links */}
       <div className="grid gap-3 lg:grid-cols-3">
-        {[
-          {
-            title: "My Profile",
-            description:
-              "View and manage your personal and employment information.",
-            icon: UserRound,
-            className: "bg-indigo-50 text-indigo-600",
-          },
-          {
-            title: "Performance",
-            description:
-              "View your goals, KPIs and performance reviews.",
-            icon: Goal,
-            className: "bg-violet-50 text-violet-600",
-          },
-          {
-            title: "Documents",
-            description:
-              "Access your employment and personal documents.",
-            icon: FileText,
-            className: "bg-blue-50 text-blue-600",
-          },
-        ].map((item) => {
-          const Icon = item.icon;
-
-          return (
-            <Card
-              key={item.title}
-              className="overflow-hidden"
-            >
-              <div className="flex items-center gap-3 p-4">
-                <div
-                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${item.className}`}
-                >
-                  <Icon size={16} />
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <h3 className="text-[12px] font-semibold text-slate-800">
-                    {item.title}
-                  </h3>
-
-                  <p className="mt-0.5 text-[10px] leading-4 text-slate-400">
-                    {item.description}
-                  </p>
-                </div>
-
-                <ArrowUpRight
-                  size={15}
-                  className="shrink-0 text-slate-300"
-                />
+        <Link to="/employee/profile">
+          <Card className="overflow-hidden transition hover:border-indigo-200">
+            <div className="flex items-center gap-3 p-4">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+                <UserRound size={16} />
               </div>
-            </Card>
-          );
-        })}
+
+              <div className="min-w-0 flex-1">
+                <h3 className="text-[12px] font-semibold text-slate-800">
+                  My Profile
+                </h3>
+
+                <p className="mt-0.5 text-[10px] leading-4 text-slate-400">
+                  View personal and employment information
+                </p>
+              </div>
+
+              <ArrowUpRight size={15} className="shrink-0 text-slate-300" />
+            </div>
+          </Card>
+        </Link>
+
+        <Link to="/employee/attendance">
+          <Card className="overflow-hidden transition hover:border-indigo-200">
+            <div className="flex items-center gap-3 p-4">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+                <Clock3 size={16} />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <h3 className="text-[12px] font-semibold text-slate-800">
+                  My Attendance
+                </h3>
+
+                <p className="mt-0.5 text-[10px] leading-4 text-slate-400">
+                  Check-in, check-out and attendance logs
+                </p>
+              </div>
+
+              <ArrowUpRight size={15} className="shrink-0 text-slate-300" />
+            </div>
+          </Card>
+        </Link>
+
+        <Link to="/employee/salary">
+          <Card className="overflow-hidden transition hover:border-indigo-200">
+            <div className="flex items-center gap-3 p-4">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                <IndianRupee size={16} />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <h3 className="text-[12px] font-semibold text-slate-800">
+                  My Salary
+                </h3>
+
+                <p className="mt-0.5 text-[10px] leading-4 text-slate-400">
+                  View compensation and payslip records
+                </p>
+              </div>
+
+              <ArrowUpRight size={15} className="shrink-0 text-slate-300" />
+            </div>
+          </Card>
+        </Link>
       </div>
     </div>
   );

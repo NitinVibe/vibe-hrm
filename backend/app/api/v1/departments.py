@@ -40,11 +40,13 @@ def list_departments(
         Department.organization_id == current_user.organization_id
     )
 
-    if is_active is not None:
-        stmt = stmt.where(Department.is_active == is_active)
+    clean_active = is_active if isinstance(is_active, bool) else None
+    if clean_active is not None:
+        stmt = stmt.where(Department.is_active == clean_active)
 
-    if search:
-        term = f"%{search.strip()}%"
+    clean_search = search if isinstance(search, str) and search.strip() else None
+    if clean_search:
+        term = f"%{clean_search.strip()}%"
         stmt = stmt.where(
             or_(
                 Department.name.ilike(term),

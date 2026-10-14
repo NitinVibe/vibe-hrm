@@ -1,8 +1,22 @@
 import { Clock3, Users, UserCheck, UserX } from "lucide-react";
 
 import Card from "../../components/ui/Card";
+import EmptyState from "../../components/ui/EmptyState";
+import type { TodayAttendanceSummary } from "../../types/attendance";
 
-export default function DashboardAttendance() {
+interface DashboardAttendanceProps {
+  summary?: TodayAttendanceSummary | null;
+  isLoading?: boolean;
+}
+
+export default function DashboardAttendance({
+  summary,
+  isLoading = false,
+}: DashboardAttendanceProps) {
+  const presentCount = isLoading ? "—" : String(summary?.present_count ?? 0);
+  const lateCount = isLoading ? "—" : String(summary?.late_count ?? 0);
+  const absentCount = isLoading ? "—" : String(summary?.absent_count ?? 0);
+
   return (
     <Card className="overflow-hidden">
       <div className="flex items-center justify-between border-b border-slate-100/80 px-4 py-3">
@@ -12,7 +26,7 @@ export default function DashboardAttendance() {
           </h2>
 
           <p className="mt-0.5 text-[11px] text-slate-400">
-            Attendance trend for the last 7 days
+            Today's attendance metrics
           </p>
         </div>
 
@@ -35,7 +49,9 @@ export default function DashboardAttendance() {
               </span>
             </div>
 
-            <p className="mt-2 text-lg font-bold text-slate-800">—</p>
+            <p className="mt-2 text-lg font-bold text-slate-800">
+              {presentCount}
+            </p>
           </div>
 
           <div className="rounded-xl bg-amber-50/70 p-3">
@@ -49,7 +65,9 @@ export default function DashboardAttendance() {
               </span>
             </div>
 
-            <p className="mt-2 text-lg font-bold text-slate-800">—</p>
+            <p className="mt-2 text-lg font-bold text-slate-800">
+              {lateCount}
+            </p>
           </div>
 
           <div className="rounded-xl bg-rose-50/70 p-3">
@@ -63,43 +81,33 @@ export default function DashboardAttendance() {
               </span>
             </div>
 
-            <p className="mt-2 text-lg font-bold text-slate-800">—</p>
+            <p className="mt-2 text-lg font-bold text-slate-800">
+              {absentCount}
+            </p>
           </div>
         </div>
 
-        {/* Chart shell */}
+        {/* Weekly trend section with honest empty state */}
         <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50/50 p-3">
-          <div className="mb-3 flex items-center justify-between">
+          <div className="mb-2 flex items-center justify-between">
             <div>
               <p className="text-[11px] font-semibold text-slate-700">
-                Weekly Attendance
+                Weekly Attendance Trend
               </p>
 
               <p className="text-[10px] text-slate-400">
-                Data will appear when attendance is connected
+                Daily check-in history
               </p>
             </div>
 
             <Users size={15} className="text-slate-300" />
           </div>
 
-          <div className="flex h-28 items-end gap-2">
-            {[38, 62, 48, 75, 56, 68, 44].map((height, index) => (
-              <div
-                key={index}
-                className="flex flex-1 flex-col items-center justify-end gap-1"
-              >
-                <div
-                  className="w-full max-w-7 rounded-t-md bg-indigo-100"
-                  style={{ height: `${height}%` }}
-                />
-
-                <span className="text-[9px] text-slate-400">
-                  {["M", "T", "W", "T", "F", "S", "S"][index]}
-                </span>
-              </div>
-            ))}
-          </div>
+          <EmptyState
+            icon={Users}
+            title="No attendance trend recorded"
+            description="Daily attendance logs will automatically calculate weekly workforce presence."
+          />
         </div>
       </div>
     </Card>

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import {
   ChevronDown,
   LayoutDashboard,
@@ -7,55 +7,19 @@ import {
 } from "lucide-react";
 
 import { getNavigationForRole } from "../../routes/roleNavigation";
-import type { UserRole } from "../../routes/navigation";
-
-function getRoleFromPath(pathname: string): UserRole {
-  if (pathname.startsWith("/employee")) {
-    return "EMPLOYEE";
-  }
-
-  if (pathname.startsWith("/manager")) {
-    return "MANAGER";
-  }
-
-  if (pathname.startsWith("/recruiter")) {
-    return "RECRUITER";
-  }
-
-  if (pathname.startsWith("/payroll-admin")) {
-    return "PAYROLL_ADMIN";
-  }
-
-  return "ADMIN";
-}
-
-function getDashboardPath(role: UserRole): string {
-  switch (role) {
-    case "EMPLOYEE":
-      return "/employee";
-
-    case "MANAGER":
-      return "/manager";
-
-    case "RECRUITER":
-      return "/recruiter";
-
-    case "PAYROLL_ADMIN":
-      return "/payroll-admin";
-
-    default:
-      return "/";
-  }
-}
+import { useAuth } from "../../context/useAuth";
+import {
+  getDashboardRouteForRole,
+  mapAuthRoleToUserRole,
+} from "../../lib/navigation";
 
 export default function Sidebar() {
-  const location = useLocation();
-
+  const { user } = useAuth();
   const [openGroup, setOpenGroup] = useState<string | null>(null);
 
-  const role = getRoleFromPath(location.pathname);
+  const role = mapAuthRoleToUserRole(user?.role_name);
   const navigation = getNavigationForRole(role);
-  const dashboardPath = getDashboardPath(role);
+  const dashboardPath = getDashboardRouteForRole(user?.role_name);
 
   return (
     <aside className="fixed left-0 top-0 z-40 flex h-screen w-[210px] shrink-0 flex-col border-r border-slate-200/80 bg-white/90 backdrop-blur-sm">

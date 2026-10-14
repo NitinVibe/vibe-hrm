@@ -55,4 +55,24 @@ export interface EmployeeFilterParams {
   status?: string;
   department_id?: string;
   designation_id?: string;
+  shift_id?: string;
+}
+
+export interface EmployeeAccountCreatePayload {
+  password: string;
+  email?: string;
+  role_name?: string;
+}
+
+export interface EmployeePasswordResetPayload {
+  password: string;
+}
+
+export interface EmployeeAccountStatusResponse {
+  has_account: boolean;
+  user_id: string | null;
+  email: string | null;
+  role_name: string | null;
+  is_active: boolean;
+  is_verified: boolean;
 }

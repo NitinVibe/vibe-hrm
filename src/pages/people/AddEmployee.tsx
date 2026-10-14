@@ -4,6 +4,9 @@ import {
   ArrowLeft,
   BriefcaseBusiness,
   Contact,
+  Eye,
+  EyeOff,
+  KeyRound,
   Loader2,
   MapPin,
   UserRound,
@@ -53,6 +56,12 @@ export default function AddEmployee() {
   const [emergencyContactPhone, setEmergencyContactPhone] = useState("");
   const [employmentType, setEmploymentType] = useState("");
   const [officeLocation, setOfficeLocation] = useState("");
+
+  // Portal Access state
+  const [enablePortalAccess, setEnablePortalAccess] = useState(false);
+  const [portalPassword, setPortalPassword] = useState("");
+  const [showPortalPassword, setShowPortalPassword] = useState(false);
+  const [portalRole, setPortalRole] = useState("EMPLOYEE");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -126,6 +135,17 @@ export default function AddEmployee() {
       return;
     }
 
+    if (enablePortalAccess) {
+      if (!trimmedEmail) {
+        setError("Work Email is required to enable self-service portal access.");
+        return;
+      }
+      if (portalPassword.length < 8) {
+        setError("Portal password must be at least 8 characters long.");
+        return;
+      }
+    }
+
     setIsSubmitting(true);
 
     const payload: EmployeeCreatePayload = {
@@ -142,7 +162,14 @@ export default function AddEmployee() {
     };
 
     try {
-      await apiClient.employees.create(payload);
+      const createdEmployee = await apiClient.employees.create(payload);
+      if (enablePortalAccess) {
+        await apiClient.employees.createAccount(createdEmployee.id, {
+          email: trimmedEmail,
+          password: portalPassword,
+          role_name: portalRole,
+        });
+      }
       navigate("/people/employees");
     } catch (err) {
       if (err instanceof ApiError) {
@@ -448,6 +475,88 @@ export default function AddEmployee() {
                 placeholder="e.g. Headquarters"
                 disabled={isSubmitting}
               />
+            </div>
+          </FormSection>
+
+          {/* Portal Login Access */}
+          <FormSection
+            icon={KeyRound}
+            title="Portal Login Access (Optional)"
+            description="Grant self-service employee portal credentials"
+          >
+            <div className="space-y-4">
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={enablePortalAccess}
+                  onChange={(e) => setEnablePortalAccess(e.target.checked)}
+                  disabled={isSubmitting}
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <div>
+                  <span className="text-xs font-semibold text-slate-800">
+                    Enable Self-Service Portal Access
+                  </span>
+                  <p className="text-[11px] text-slate-500">
+                    Creates an active user account allowing this employee to log in immediately with their email to punch attendance and view personal payroll.
+                  </p>
+                </div>
+              </label>
+
+              {enablePortalAccess && (
+                <div className="grid gap-4 md:grid-cols-2 pt-3 border-t border-slate-100">
+                  <div>
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs font-medium text-slate-600">
+                        Initial Password <span className="text-rose-500">*</span>
+                      </span>
+                      <div className="relative">
+                        <input
+                          type={showPortalPassword ? "text" : "password"}
+                          value={portalPassword}
+                          onChange={(e) => setPortalPassword(e.target.value)}
+                          placeholder="Minimum 8 characters"
+                          minLength={8}
+                          required={enablePortalAccess}
+                          disabled={isSubmitting}
+                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 pr-9 disabled:opacity-60"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPortalPassword((s) => !s)}
+                          className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                        >
+                          {showPortalPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
+                      </div>
+                    </label>
+                    <span className="mt-1 block text-[11px] text-slate-400">
+                      Must be at least 8 characters. The employee can change this later.
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs font-medium text-slate-600">
+                        Assigned Portal Role
+                      </span>
+                      <select
+                        value={portalRole}
+                        onChange={(e) => setPortalRole(e.target.value)}
+                        disabled={isSubmitting}
+                        className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 disabled:opacity-60"
+                      >
+                        <option value="EMPLOYEE">Employee (Self-Service Portal)</option>
+                        <option value="MANAGER">Manager (Team Management)</option>
+                        <option value="HR">HR (Workforce Operations)</option>
+                      </select>
+                    </label>
+                    <span className="mt-1 block text-[11px] text-slate-400">
+                      Determines which portal dashboard the employee is redirected to upon login.
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
           </FormSection>
 

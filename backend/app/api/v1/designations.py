@@ -41,14 +41,17 @@ def list_designations(
         Designation.organization_id == current_user.organization_id
     )
 
-    if department_id is not None:
-        stmt = stmt.where(Designation.department_id == department_id)
+    clean_dept_id = department_id if isinstance(department_id, UUID) else None
+    if clean_dept_id is not None:
+        stmt = stmt.where(Designation.department_id == clean_dept_id)
 
-    if is_active is not None:
-        stmt = stmt.where(Designation.is_active == is_active)
+    clean_active = is_active if isinstance(is_active, bool) else None
+    if clean_active is not None:
+        stmt = stmt.where(Designation.is_active == clean_active)
 
-    if search:
-        term = f"%{search.strip()}%"
+    clean_search = search if isinstance(search, str) and search.strip() else None
+    if clean_search:
+        term = f"%{clean_search.strip()}%"
         stmt = stmt.where(
             or_(
                 Designation.name.ilike(term),

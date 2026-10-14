@@ -106,3 +106,38 @@ class EmployeeResponse(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class EmployeeAccountCreate(BaseModel):
+    password: str = Field(..., min_length=8, max_length=128)
+    email: EmailStr | None = Field(default=None, max_length=255)
+    role_name: str = Field(default="EMPLOYEE", max_length=50)
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_complexity(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters long")
+        return v
+
+
+class EmployeePasswordReset(BaseModel):
+    password: str = Field(..., min_length=8, max_length=128)
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_complexity(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters long")
+        return v
+
+
+class EmployeeAccountStatusResponse(BaseModel):
+    has_account: bool
+    user_id: UUID | None = None
+    email: str | None = None
+    role_name: str | None = None
+    is_active: bool = False
+    is_verified: bool = False
+
+    model_config = ConfigDict(from_attributes=True)

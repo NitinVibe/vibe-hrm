@@ -1,8 +1,12 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
+import {
+  getDashboardRouteForRole,
+  isRouteAllowedForRole,
+} from "../../lib/navigation";
 
 export default function ProtectedRoute() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
   const location = useLocation();
 
   if (isLoading) {
@@ -20,6 +24,11 @@ export default function ProtectedRoute() {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  if (!isRouteAllowedForRole(location.pathname, user?.role_name)) {
+    const targetDashboard = getDashboardRouteForRole(user?.role_name);
+    return <Navigate to={targetDashboard} replace />;
   }
 
   return <Outlet />;

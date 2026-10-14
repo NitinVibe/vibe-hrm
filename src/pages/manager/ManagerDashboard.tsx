@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   CalendarCheck,
   CalendarDays,
@@ -6,49 +8,93 @@ import {
   ListTodo,
   Users,
   ArrowUpRight,
+  UserCheck,
+  Clock3,
+  UserX,
 } from "lucide-react";
 
 import Card from "../../components/ui/Card";
 import StatCard from "../../components/ui/StatCard";
 import PageHeader from "../../components/ui/PageHeader";
 import EmptyState from "../../components/ui/EmptyState";
+import { apiClient } from "../../api/client";
+import type { Employee } from "../../types/employee";
+import type { TodayAttendanceSummary } from "../../types/attendance";
 
 export default function ManagerDashboard() {
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [todaySummary, setTodaySummary] = useState<TodayAttendanceSummary | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadManagerData() {
+      setIsLoading(true);
+      try {
+        const [empData, attData] = await Promise.all([
+          apiClient.employees.list().catch(() => []),
+          apiClient.attendance.getTodaySummary().catch(() => null),
+        ]);
+
+        if (isMounted) {
+          setEmployees(empData);
+          setTodaySummary(attData);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadManagerData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const teamCount = employees.length;
+  const presentCount = todaySummary?.present_count ?? 0;
+  const lateCount = todaySummary?.late_count ?? 0;
+  const absentCount = todaySummary?.absent_count ?? 0;
+
   return (
     <div className="space-y-4">
       {/* Page Header */}
       <PageHeader
         title="Manager Dashboard"
-        description="Monitor your team, approvals, attendance, performance and work."
+        description="Monitor your team, attendance, and departmental workforce."
       />
 
       {/* Overview Stats */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Team Members"
-          value="—"
-          description="Direct reports"
+          value={isLoading ? "—" : String(teamCount)}
+          description="Total workforce"
           icon={Users}
         />
 
         <StatCard
           title="Team Attendance"
-          value="—"
-          description="Today's status"
+          value={isLoading ? "—" : `${presentCount} Present`}
+          description="Today's attendance"
           icon={CalendarCheck}
         />
 
         <StatCard
           title="Pending Approvals"
-          value="—"
-          description="Requires action"
+          value="0"
+          description="Approvals (Phase 2)"
           icon={ClipboardCheck}
         />
 
         <StatCard
           title="Team Tasks"
-          value="—"
-          description="Active tasks"
+          value="0"
+          description="Projects/Tasks (Phase 2)"
           icon={ListTodo}
         />
       </div>
@@ -64,12 +110,53 @@ export default function ManagerDashboard() {
             iconClass="bg-blue-50 text-blue-600"
           />
 
-          <div className="p-3">
-            <EmptyState
-              icon={CalendarCheck}
-              title="No attendance data"
-              description="Your team's attendance status will appear here."
-            />
+          <div className="p-4">
+            <div className="grid grid-cols-3 gap-2">
+              <div className="rounded-xl bg-emerald-50/70 p-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white text-emerald-600 shadow-sm">
+                    <UserCheck size={14} />
+                  </div>
+                  <span className="text-[10px] font-medium text-slate-500">Present</span>
+                </div>
+                <p className="mt-2 text-lg font-bold text-slate-800">
+                  {isLoading ? "—" : presentCount}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-amber-50/70 p-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white text-amber-600 shadow-sm">
+                    <Clock3 size={14} />
+                  </div>
+                  <span className="text-[10px] font-medium text-slate-500">Late</span>
+                </div>
+                <p className="mt-2 text-lg font-bold text-slate-800">
+                  {isLoading ? "—" : lateCount}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-rose-50/70 p-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white text-rose-600 shadow-sm">
+                    <UserX size={14} />
+                  </div>
+                  <span className="text-[10px] font-medium text-slate-500">Absent</span>
+                </div>
+                <p className="mt-2 text-lg font-bold text-slate-800">
+                  {isLoading ? "—" : absentCount}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-3 flex justify-end">
+              <Link
+                to="/manager/attendance"
+                className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+              >
+                View Detailed Attendance &rarr;
+              </Link>
+            </div>
           </div>
         </Card>
 
@@ -78,7 +165,7 @@ export default function ManagerDashboard() {
           <SectionHeader
             icon={ClipboardCheck}
             title="Pending Approvals"
-            description="Requests waiting for your action"
+            description="Requests waiting for action"
             iconClass="bg-violet-50 text-violet-600"
           />
 
@@ -86,7 +173,7 @@ export default function ManagerDashboard() {
             <EmptyState
               icon={ClipboardCheck}
               title="No pending approvals"
-              description="Leave, attendance and other team approvals will appear here."
+              description="Approval workflows (leave requests, expense claims) will activate in Phase 2."
             />
           </div>
         </Card>
@@ -96,15 +183,15 @@ export default function ManagerDashboard() {
           <SectionHeader
             icon={Goal}
             title="Team Performance"
-            description="Goals and performance progress"
+            description="Goals and review cycles"
             iconClass="bg-emerald-50 text-emerald-600"
           />
 
           <div className="p-3">
             <EmptyState
               icon={Goal}
-              title="No performance data"
-              description="Team goals and performance progress will appear here."
+              title="No performance cycles active"
+              description="Performance appraisal system will activate in Phase 2."
             />
           </div>
         </Card>
@@ -114,15 +201,15 @@ export default function ManagerDashboard() {
           <SectionHeader
             icon={CalendarDays}
             title="Upcoming Team Activity"
-            description="Leave, events and upcoming activities"
+            description="Leave, events and team activities"
             iconClass="bg-amber-50 text-amber-600"
           />
 
           <div className="p-3">
             <EmptyState
               icon={CalendarDays}
-              title="No upcoming activity"
-              description="Upcoming leave, events and team activities will appear here."
+              title="No upcoming team events"
+              description="Company and team events will appear here."
             />
           </div>
         </Card>
@@ -133,11 +220,11 @@ export default function ManagerDashboard() {
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
           <div>
             <h2 className="text-[13px] font-semibold text-slate-800">
-              Manager Overview
+              Manager Navigation
             </h2>
 
             <p className="mt-0.5 text-[10px] text-slate-400">
-              Quick access to your team's key areas
+              Quick access to your team operations
             </p>
           </div>
 
@@ -147,31 +234,35 @@ export default function ManagerDashboard() {
         </div>
 
         <div className="grid gap-2.5 p-3 sm:grid-cols-2 lg:grid-cols-4">
-          <ManagerTool
-            icon={Users}
-            title="My Team"
-            description="Team members"
-            iconClass="bg-blue-50 text-blue-600"
-          />
+          <Link to="/manager/members">
+            <ManagerTool
+              icon={Users}
+              title="My Team"
+              description="Team directory"
+              iconClass="bg-blue-50 text-blue-600"
+            />
+          </Link>
 
-          <ManagerTool
-            icon={ClipboardCheck}
-            title="Approvals"
-            description="Review requests"
-            iconClass="bg-violet-50 text-violet-600"
-          />
+          <Link to="/manager/attendance">
+            <ManagerTool
+              icon={CalendarCheck}
+              title="Team Attendance"
+              description="Live punches & logs"
+              iconClass="bg-emerald-50 text-emerald-600"
+            />
+          </Link>
 
           <ManagerTool
             icon={Goal}
             title="Performance"
-            description="Goals and reviews"
-            iconClass="bg-emerald-50 text-emerald-600"
+            description="Phase 2 module"
+            iconClass="bg-violet-50 text-violet-600"
           />
 
           <ManagerTool
             icon={ListTodo}
             title="Projects & Tasks"
-            description="Team work"
+            description="Phase 2 module"
             iconClass="bg-amber-50 text-amber-600"
           />
         </div>

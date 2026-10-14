@@ -9,16 +9,22 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.permissions import (
     EMPLOYEE_READ_ROLES,
     EMPLOYEE_WRITE_ROLES,
+    get_current_user,
     require_roles,
 )
+from app.core.security import get_password_hash
 from app.db.session import get_db
 from app.models.department import Department
 from app.models.designation import Designation
 from app.models.employee import Employee
+from app.models.role import Role
 from app.models.shift import Shift
 from app.models.user import User
 from app.schemas.employee import (
+    EmployeeAccountCreate,
+    EmployeeAccountStatusResponse,
     EmployeeCreate,
+    EmployeePasswordReset,
     EmployeeResponse,
     EmployeeUpdate,
 )
@@ -42,6 +48,7 @@ def list_employees(
     List all employees scoped strictly to the authenticated user's organization.
     Supports optional search (code, name, email), status, department, designation, and shift filters.
     Loads department, designation, and shift eager relationships to avoid N+1 queries.
+    Managers are restricted strictly to employees within their assigned department.
     """
     stmt = (
         select(Employee)
@@ -54,6 +61,28 @@ def list_employees(
     )
 
     clean_dept_id = department_id if isinstance(department_id, UUID) else None
+
+    # Enforce manager department scoping
+    role_stmt = select(Role.name).where(Role.id == current_user.role_id)
+    user_role = db.execute(role_stmt).scalar_one_or_none()
+    if user_role == "MANAGER":
+        mgr_emp_stmt = select(Employee).where(
+            Employee.user_id == current_user.id,
+            Employee.organization_id == current_user.organization_id,
+        )
+        mgr_emp = db.execute(mgr_emp_stmt).scalar_one_or_none()
+        if not mgr_emp or not mgr_emp.department_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Manager is not assigned to any department",
+            )
+        if clean_dept_id and clean_dept_id != mgr_emp.department_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Managers can only view employees in their assigned department",
+            )
+        clean_dept_id = mgr_emp.department_id
+
     if clean_dept_id is not None:
         stmt = stmt.where(Employee.department_id == clean_dept_id)
 
@@ -92,6 +121,36 @@ def list_employees(
     return list(employees)
 
 
+@router.get("/me", response_model=EmployeeResponse)
+def get_current_employee_profile(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Retrieve the employee profile linked to the currently authenticated user.
+    Accessible by any authenticated user who has an active linked employee record.
+    """
+    stmt = (
+        select(Employee)
+        .options(
+            joinedload(Employee.department),
+            joinedload(Employee.designation),
+            joinedload(Employee.shift),
+        )
+        .where(
+            Employee.user_id == current_user.id,
+            Employee.organization_id == current_user.organization_id,
+        )
+    )
+    employee = db.execute(stmt).scalar_one_or_none()
+    if not employee:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Employee profile not found for the current user",
+        )
+    return employee
+
+
 @router.get("/{employee_id}", response_model=EmployeeResponse)
 def get_employee(
     employee_id: UUID,
@@ -101,6 +160,7 @@ def get_employee(
     """
     Retrieve single employee by ID scoped to current organization.
     Loads department, designation, and shift relationships. Returns 404 if not found.
+    Managers are restricted strictly to employees within their assigned department.
     """
     stmt = (
         select(Employee)
@@ -120,6 +180,27 @@ def get_employee(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Employee not found",
         )
+
+    # Enforce manager department scoping
+    role_stmt = select(Role.name).where(Role.id == current_user.role_id)
+    user_role = db.execute(role_stmt).scalar_one_or_none()
+    if user_role == "MANAGER":
+        mgr_emp_stmt = select(Employee).where(
+            Employee.user_id == current_user.id,
+            Employee.organization_id == current_user.organization_id,
+        )
+        mgr_emp = db.execute(mgr_emp_stmt).scalar_one_or_none()
+        if not mgr_emp or not mgr_emp.department_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Manager is not assigned to any department",
+            )
+        if employee.department_id != mgr_emp.department_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Managers can only view employees in their assigned department",
+            )
+
     return employee
 
 
@@ -478,3 +559,255 @@ def update_employee(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while updating employee",
         )
+
+
+@router.get("/{employee_id}/account", response_model=EmployeeAccountStatusResponse)
+def get_employee_account_status(
+    employee_id: UUID,
+    current_user: User = Depends(require_roles(*EMPLOYEE_READ_ROLES)),
+    db: Session = Depends(get_db),
+):
+    """
+    Retrieve login account status for a given employee.
+    Admins, HR, and Managers can query employees within their organization.
+    Employees can only query their own account status.
+    """
+    stmt = select(Employee).where(
+        Employee.id == employee_id,
+        Employee.organization_id == current_user.organization_id,
+    )
+    employee = db.execute(stmt).scalar_one_or_none()
+    if not employee:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Employee not found",
+        )
+
+    # Scoping check for regular employees
+    if employee.user_id != current_user.id:
+        role_stmt = select(Role).where(Role.id == current_user.role_id)
+        role = db.execute(role_stmt).scalar_one_or_none()
+        caller_role = role.name if role else "EMPLOYEE"
+        if caller_role not in EMPLOYEE_WRITE_ROLES and caller_role != "MANAGER":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions to view this employee's account details",
+            )
+
+    if not employee.user_id:
+        return EmployeeAccountStatusResponse(
+            has_account=False,
+            user_id=None,
+            email=employee.email,
+            role_name=None,
+            is_active=False,
+            is_verified=False,
+        )
+
+    user_stmt = (
+        select(User)
+        .options(joinedload(User.role))
+        .where(
+            User.id == employee.user_id,
+            User.organization_id == current_user.organization_id,
+        )
+    )
+    user = db.execute(user_stmt).scalar_one_or_none()
+    if not user:
+        return EmployeeAccountStatusResponse(
+            has_account=False,
+            user_id=None,
+            email=employee.email,
+            role_name=None,
+            is_active=False,
+            is_verified=False,
+        )
+
+    return EmployeeAccountStatusResponse(
+        has_account=True,
+        user_id=user.id,
+        email=user.email,
+        role_name=user.role.name if user.role else "EMPLOYEE",
+        is_active=user.is_active,
+        is_verified=user.is_verified,
+    )
+
+
+@router.post(
+    "/{employee_id}/account",
+    response_model=EmployeeAccountStatusResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_employee_account(
+    employee_id: UUID,
+    payload: EmployeeAccountCreate,
+    current_user: User = Depends(require_roles(*EMPLOYEE_WRITE_ROLES)),
+    db: Session = Depends(get_db),
+):
+    """
+    Provision or link a user account for an employee to enable self-service portal access.
+    Creates a new User record with hashed password and EMPLOYEE role, or links an existing unlinked User.
+    Enforces tenant isolation and prevents duplicate email / employee link conflicts.
+    """
+    stmt = select(Employee).where(
+        Employee.id == employee_id,
+        Employee.organization_id == current_user.organization_id,
+    )
+    employee = db.execute(stmt).scalar_one_or_none()
+    if not employee:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Employee not found",
+        )
+
+    if employee.user_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Employee already has a linked user account",
+        )
+
+    target_email = payload.email or (employee.email if employee.email else None)
+    if not target_email or not str(target_email).strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="An email address is required to create a user account. Please provide an email.",
+        )
+
+    clean_email = str(target_email).strip().lower()
+
+    # Check whether a user with this email already exists
+    user_stmt = (
+        select(User)
+        .options(joinedload(User.role))
+        .where(User.email == clean_email)
+    )
+    existing_user = db.execute(user_stmt).scalar_one_or_none()
+
+    if existing_user:
+        if existing_user.organization_id != current_user.organization_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A user with this email address already exists in another organization",
+            )
+
+        other_link = db.execute(
+            select(Employee).where(Employee.user_id == existing_user.id)
+        ).scalar_one_or_none()
+        if other_link and other_link.id != employee.id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A user with this email is already linked to another employee record",
+            )
+
+        user = existing_user
+        user.password_hash = get_password_hash(payload.password)
+        user.is_active = True
+        user.is_verified = True
+        user.updated_at = datetime.utcnow()
+    else:
+        target_role_name = (payload.role_name or "EMPLOYEE").strip().upper()
+        allowed_target_roles = ("EMPLOYEE", "MANAGER", "HR")
+        if target_role_name not in allowed_target_roles:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid role '{target_role_name}'. Allowed roles: {', '.join(allowed_target_roles)}",
+            )
+
+        role = db.execute(
+            select(Role).where(Role.name == target_role_name)
+        ).scalar_one_or_none()
+        if not role:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Role '{target_role_name}' is not configured in the database",
+            )
+
+        user = User(
+            id=uuid4(),
+            organization_id=current_user.organization_id,
+            role_id=role.id,
+            email=clean_email,
+            password_hash=get_password_hash(payload.password),
+            is_active=True,
+            is_verified=True,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        db.add(user)
+        db.flush()
+
+    employee.user_id = user.id
+    if not employee.email or employee.email.lower() != clean_email:
+        employee.email = clean_email
+    employee.updated_at = datetime.utcnow()
+
+    try:
+        db.commit()
+        db.refresh(user)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Failed to link user account due to unique constraint conflict",
+        )
+
+    role_name = user.role.name if user.role else "EMPLOYEE"
+    return EmployeeAccountStatusResponse(
+        has_account=True,
+        user_id=user.id,
+        email=user.email,
+        role_name=role_name,
+        is_active=user.is_active,
+        is_verified=user.is_verified,
+    )
+
+
+@router.post("/{employee_id}/reset-password")
+def reset_employee_password(
+    employee_id: UUID,
+    payload: EmployeePasswordReset,
+    current_user: User = Depends(require_roles(*EMPLOYEE_WRITE_ROLES)),
+    db: Session = Depends(get_db),
+):
+    """
+    Reset password for an employee's linked user account.
+    Restricted to organization administrators and HR.
+    """
+    stmt = select(Employee).where(
+        Employee.id == employee_id,
+        Employee.organization_id == current_user.organization_id,
+    )
+    employee = db.execute(stmt).scalar_one_or_none()
+    if not employee:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Employee not found",
+        )
+
+    if not employee.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Employee does not have a linked user account",
+        )
+
+    user = db.execute(
+        select(User).where(
+            User.id == employee.user_id,
+            User.organization_id == current_user.organization_id,
+        )
+    ).scalar_one_or_none()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Linked user account not found",
+        )
+
+    user.password_hash = get_password_hash(payload.password)
+    user.updated_at = datetime.utcnow()
+    db.commit()
+
+    return {
+        "message": "Password reset successfully",
+        "user_id": str(user.id),
+        "employee_id": str(employee.id),
+    }

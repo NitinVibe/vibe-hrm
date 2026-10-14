@@ -12,8 +12,11 @@ import type {
 } from "../types/designation";
 import type {
   Employee,
+  EmployeeAccountCreatePayload,
+  EmployeeAccountStatusResponse,
   EmployeeCreatePayload,
   EmployeeFilterParams,
+  EmployeePasswordResetPayload,
   EmployeeUpdatePayload,
 } from "../types/employee";
 import type {
@@ -185,12 +188,20 @@ export const apiClient = {
       if (params?.designation_id && params.designation_id.trim()) {
         searchParams.append("designation_id", params.designation_id.trim());
       }
+      if (params?.shift_id && params.shift_id.trim()) {
+        searchParams.append("shift_id", params.shift_id.trim());
+      }
       const query = searchParams.toString();
       const endpoint = query ? `/api/v1/employees?${query}` : "/api/v1/employees";
       return apiRequest<Employee[]>(endpoint, {
         method: "GET",
       });
     },
+
+    getMe: (): Promise<Employee> =>
+      apiRequest<Employee>("/api/v1/employees/me", {
+        method: "GET",
+      }),
 
     get: (employeeId: string): Promise<Employee> =>
       apiRequest<Employee>(`/api/v1/employees/${employeeId}`, {
@@ -211,6 +222,32 @@ export const apiClient = {
         method: "PATCH",
         body: JSON.stringify(payload),
       }),
+
+    getAccount: (employeeId: string): Promise<EmployeeAccountStatusResponse> =>
+      apiRequest<EmployeeAccountStatusResponse>(`/api/v1/employees/${employeeId}/account`, {
+        method: "GET",
+      }),
+
+    createAccount: (
+      employeeId: string,
+      payload: EmployeeAccountCreatePayload
+    ): Promise<EmployeeAccountStatusResponse> =>
+      apiRequest<EmployeeAccountStatusResponse>(`/api/v1/employees/${employeeId}/account`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+
+    resetPassword: (
+      employeeId: string,
+      payload: EmployeePasswordResetPayload
+    ): Promise<{ message: string; user_id: string; employee_id: string }> =>
+      apiRequest<{ message: string; user_id: string; employee_id: string }>(
+        `/api/v1/employees/${employeeId}/reset-password`,
+        {
+          method: "POST",
+          body: JSON.stringify(payload),
+        }
+      ),
   },
 
   departments: {

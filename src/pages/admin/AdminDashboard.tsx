@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
     BriefcaseBusiness,
     CalendarDays,
@@ -14,9 +15,60 @@ import Card from "../../components/ui/Card";
 import EmptyState from "../../components/ui/EmptyState";
 import PageHeader from "../../components/ui/PageHeader";
 import StatCard from "../../components/ui/StatCard";
-// import Button from "../../components/ui/Button";
+import { apiClient } from "../../api/client";
+import type { Employee } from "../../types/employee";
+import type { Department } from "../../types/department";
+import type { TodayAttendanceSummary } from "../../types/attendance";
 
 export default function AdminDashboard() {
+    const [employees, setEmployees] = useState<Employee[]>([]);
+    const [departments, setDepartments] = useState<Department[]>([]);
+    const [todaySummary, setTodaySummary] = useState<TodayAttendanceSummary | null>(null);
+    const [isLoading, setIsLoading] = useState<boolean>(true);
+
+    useEffect(() => {
+        let isMounted = true;
+
+        async function fetchDashboardData() {
+            try {
+                setIsLoading(true);
+                const [empData, deptData, attData] = await Promise.all([
+                    apiClient.employees.list().catch(() => []),
+                    apiClient.departments.list().catch(() => []),
+                    apiClient.attendance.getTodaySummary().catch(() => null),
+                ]);
+
+                if (isMounted) {
+                    setEmployees(empData);
+                    setDepartments(deptData);
+                    setTodaySummary(attData);
+                }
+            } finally {
+                if (isMounted) {
+                    setIsLoading(false);
+                }
+            }
+        }
+
+        void fetchDashboardData();
+
+        return () => {
+            isMounted = false;
+        };
+    }, []);
+
+    const totalEmployees = employees.length;
+    const presentToday = todaySummary?.present_count ?? 0;
+
+    // Calculate actual department distributions
+    const departmentDistribution = departments.map((dept) => {
+        const count = employees.filter((e) => e.department_id === dept.id).length;
+        return {
+            name: dept.name,
+            count,
+        };
+    });
+
     return (
         <div className="space-y-3">
             <PageHeader
@@ -28,29 +80,29 @@ export default function AdminDashboard() {
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                 <StatCard
                     title="Employees"
-                    value="—"
+                    value={isLoading ? "—" : String(totalEmployees)}
                     description="Total workforce"
                     icon={Users}
                 />
 
                 <StatCard
                     title="Present Today"
-                    value="—"
+                    value={isLoading ? "—" : String(presentToday)}
                     description="Attendance"
                     icon={Clock3}
                 />
 
                 <StatCard
                     title="On Leave"
-                    value="—"
-                    description="Today's leave"
+                    value="0"
+                    description="Leave module (Phase 2)"
                     icon={CalendarDays}
                 />
 
                 <StatCard
                     title="Open Jobs"
-                    value="—"
-                    description="Active positions"
+                    value="0"
+                    description="Recruitment (Phase 2)"
                     icon={BriefcaseBusiness}
                 />
             </div>
@@ -58,7 +110,7 @@ export default function AdminDashboard() {
             {/* Attendance / Leave / Upcoming */}
             <div className="grid gap-3 lg:grid-cols-4">
                 <div className="lg:col-span-2">
-                    <DashboardAttendance />
+                    <DashboardAttendance summary={todaySummary} isLoading={isLoading} />
                 </div>
 
                 <DashboardLeave />
@@ -102,10 +154,12 @@ export default function AdminDashboard() {
                     </div>
 
                     <div className="flex items-center justify-center p-5">
-                        <div className="relative flex h-32 w-32 items-center justify-center rounded-full bg-[conic-gradient(#6366f1_0deg,#6366f1_90deg,#8b5cf6_90deg,#8b5cf6_180deg,#38bdf8_180deg,#38bdf8_260deg,#e2e8f0_260deg,#e2e8f0_360deg)]">
-                            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white">
+                        <div className="relative flex h-32 w-32 items-center justify-center rounded-full bg-slate-100">
+                            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white shadow-sm">
                                 <div className="text-center">
-                                    <p className="text-lg font-bold text-slate-800">—</p>
+                                    <p className="text-lg font-bold text-slate-800">
+                                        {isLoading ? "—" : String(totalEmployees)}
+                                    </p>
                                     <p className="text-[9px] text-slate-400">Employees</p>
                                 </div>
                             </div>
@@ -113,20 +167,26 @@ export default function AdminDashboard() {
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 px-3 pb-3">
-                        {["Engineering", "HR", "Sales", "Other"].map((department) => (
-                            <div
-                                key={department}
-                                className="flex items-center justify-between rounded-lg bg-slate-50 px-2.5 py-2"
-                            >
-                                <span className="text-[10px] text-slate-500">
-                                    {department}
-                                </span>
+                        {departmentDistribution.length > 0 ? (
+                            departmentDistribution.slice(0, 6).map((dept) => (
+                                <div
+                                    key={dept.name}
+                                    className="flex items-center justify-between rounded-lg bg-slate-50 px-2.5 py-2"
+                                >
+                                    <span className="truncate text-[10px] text-slate-500">
+                                        {dept.name}
+                                    </span>
 
-                                <span className="text-[10px] font-semibold text-slate-700">
-                                    —
-                                </span>
+                                    <span className="text-[10px] font-semibold text-slate-700">
+                                        {isLoading ? "—" : dept.count}
+                                    </span>
+                                </div>
+                            ))
+                        ) : (
+                            <div className="col-span-2 py-2 text-center text-[11px] text-slate-400">
+                                {isLoading ? "Loading departments..." : "No departments created yet"}
                             </div>
-                        ))}
+                        )}
                     </div>
                 </Card>
 

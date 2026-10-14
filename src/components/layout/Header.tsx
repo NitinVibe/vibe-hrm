@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Bell, Search, ChevronDown, Plus, LogOut, Shield } from "lucide-react";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
+import { getDashboardRouteForRole } from "../../lib/navigation";
 
 type RoleInfo = {
   name: string;
@@ -55,7 +56,9 @@ export default function Header() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const fallbackRole = getRoleInfo(location.pathname);
+  const fallbackRole = getRoleInfo(
+    user?.role_name ? getDashboardRouteForRole(user.role_name) : location.pathname
+  );
 
   // Compute display info from authenticated user or fallback
   const displayName = user?.email
