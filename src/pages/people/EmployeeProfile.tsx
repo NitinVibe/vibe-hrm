@@ -5,6 +5,7 @@ import {
   CalendarDays,
   CheckCircle2,
   ClipboardList,
+  Edit,
   Eye,
   EyeOff,
   FileText,
@@ -217,13 +218,22 @@ export default function EmployeeProfile() {
         title="Employee Profile"
         description="View and manage employee information"
         actions={
-          <Button
-            variant="outline"
-            onClick={() => navigate("/people/employees")}
-          >
-            <ArrowLeft size={16} />
-            Back to Employees
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => navigate(`/people/employees/${employee.id}/edit`)}
+            >
+              <Edit size={16} />
+              Edit Employee
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => navigate("/people/employees")}
+            >
+              <ArrowLeft size={16} />
+              Back to Employees
+            </Button>
+          </div>
         }
       />
 

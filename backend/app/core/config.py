@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
     CORS_ORIGINS: str = "http://localhost:5173"
-    CORS_ORIGIN_REGEX: str | None = None
+    CORS_ORIGIN_REGEX: str | None = r"^https:\/\/.*\.vercel\.app$"
 
     # Login rate limiting configuration
     RATE_LIMIT_LOGIN_MAX_ATTEMPTS: int = 5

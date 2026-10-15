@@ -79,6 +79,30 @@ class StageB2SecurityRemediationTestCase(unittest.TestCase):
             is_verified=True,
         )
         cls.db.add(cls.admin_user)
+
+        # 4. Create secondary test admin user for maker-checker approval
+        cls.checker_admin_user = User(
+            id=uuid4(),
+            organization_id=cls.test_org.id,
+            role_id=cls.org_admin_role.id,
+            email=f"checker.{uuid4().hex[:6]}@example.com",
+            password_hash="$2b$12$K1kJGv.D34K6Jz359H2ZfeqQoQO9QoQO9QoQO9QoQO9QoQO9QoQO9",  # dummy
+            is_active=True,
+            is_verified=True,
+        )
+        cls.db.add(cls.checker_admin_user)
+
+        # 5. Create third test admin user for maker-checker payment recording
+        cls.payer_admin_user = User(
+            id=uuid4(),
+            organization_id=cls.test_org.id,
+            role_id=cls.org_admin_role.id,
+            email=f"payer.{uuid4().hex[:6]}@example.com",
+            password_hash="$2b$12$K1kJGv.D34K6Jz359H2ZfeqQoQO9QoQO9QoQO9QoQO9QoQO9QoQO9",  # dummy
+            is_active=True,
+            is_verified=True,
+        )
+        cls.db.add(cls.payer_admin_user)
         cls.db.commit()
 
     @classmethod
@@ -221,11 +245,11 @@ class StageB2SecurityRemediationTestCase(unittest.TestCase):
         self.assertIn("APPROVED", ctx.exception.detail)
 
         # Now approve run -> status becomes APPROVED
-        approved = approve_payroll_run(run.id, current_user=self.admin_user, db=self.db)
+        approved = approve_payroll_run(run.id, current_user=self.checker_admin_user, db=self.db)
         self.assertEqual(approved.status, "APPROVED")
 
         # Now mark paid -> succeeds
-        paid = mark_payroll_run_paid(run.id, current_user=self.admin_user, db=self.db)
+        paid = mark_payroll_run_paid(run.id, current_user=self.payer_admin_user, db=self.db)
         self.assertEqual(paid.status, "PAID")
 
     # -------------------------------------------------------------

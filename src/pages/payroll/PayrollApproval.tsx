@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import {
   FileCheck2,
   FileText,
+  History,
   Loader2,
   RefreshCw,
+  ShieldCheck,
 } from "lucide-react";
 
 import { apiClient } from "../../api/client";
@@ -19,7 +21,7 @@ import {
   getPaymentStatusBadgeVariant,
   getPayrollStatusBadgeVariant,
 } from "../../lib/payrollUtils";
-import type { PayrollRun, Payslip } from "../../types/payroll";
+import type { PayrollAuditLog, PayrollRun, Payslip } from "../../types/payroll";
 
 export default function PayrollApproval() {
   const [runs, setRuns] = useState<PayrollRun[]>([]);
@@ -32,6 +34,12 @@ export default function PayrollApproval() {
   const [selectedRun, setSelectedRun] = useState<PayrollRun | null>(null);
   const [runPayslips, setRunPayslips] = useState<Payslip[]>([]);
   const [payslipsLoading, setPayslipsLoading] = useState(false);
+
+  // Audit History Modal State
+  const [isAuditOpen, setIsAuditOpen] = useState(false);
+  const [auditRun, setAuditRun] = useState<PayrollRun | null>(null);
+  const [auditLogs, setAuditLogs] = useState<PayrollAuditLog[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
 
   async function loadRuns() {
     try {
@@ -59,7 +67,7 @@ export default function PayrollApproval() {
   }, []);
 
   async function handleApprove(runId: string) {
-    if (!window.confirm("Approve this processed payroll run? Once approved, it can be marked as paid.")) {
+    if (!window.confirm("Approve this processed payroll run? Note: Maker-checker policy requires that the user approving this run must be different from the user who processed it.")) {
       return;
     }
     try {
@@ -68,6 +76,61 @@ export default function PayrollApproval() {
       await loadRuns();
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Failed to approve payroll run");
+    } finally {
+      setActionRunId(null);
+    }
+  }
+
+  async function openAuditTrail(run: PayrollRun) {
+    setAuditRun(run);
+    setIsAuditOpen(true);
+    setAuditLogs([]);
+    try {
+      setAuditLoading(true);
+      const logs = await apiClient.payroll.getRunAuditLogs(run.id);
+      setAuditLogs(logs);
+    } catch (err: unknown) {
+      console.error("Failed to load audit logs:", err);
+    } finally {
+      setAuditLoading(false);
+    }
+  }
+
+  async function handleReturnToDraft(runId: string) {
+    const reason = window.prompt(
+      "Enter an audit reason for rejecting and returning this processed run to draft:"
+    );
+    if (reason === null) return;
+    if (reason.trim().length < 3) {
+      alert("A valid reversal reason of at least 3 characters is required.");
+      return;
+    }
+    try {
+      setActionRunId(runId);
+      await apiClient.payroll.returnToDraft(runId, reason.trim());
+      await loadRuns();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to return run to draft");
+    } finally {
+      setActionRunId(null);
+    }
+  }
+
+  async function handleReverseApproval(runId: string) {
+    const reason = window.prompt(
+      "Enter an audit reason for reversing approval on this payroll run:"
+    );
+    if (reason === null) return;
+    if (reason.trim().length < 3) {
+      alert("A valid reversal reason of at least 3 characters is required.");
+      return;
+    }
+    try {
+      setActionRunId(runId);
+      await apiClient.payroll.reverseApproval(runId, reason.trim());
+      await loadRuns();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to reverse approval");
     } finally {
       setActionRunId(null);
     }
@@ -97,6 +160,13 @@ export default function PayrollApproval() {
         title="Payroll Approval"
         description="Review processed compensation summaries and grant authorization before disbursement."
       />
+
+      <div className="flex items-center gap-2 rounded-lg border border-indigo-100 bg-indigo-50/70 p-3 text-xs text-indigo-900">
+        <ShieldCheck size={16} className="shrink-0 text-indigo-600" />
+        <span>
+          <strong>Maker-Checker Governance:</strong> Under strict accounting control, the user who processed or calculated a payroll run cannot approve it. An independent authorized administrator must review and approve the run before payment can be recorded.
+        </span>
+      </div>
 
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-600">
@@ -211,14 +281,47 @@ export default function PayrollApproval() {
                             Review Payslips
                           </Button>
 
+                          <Button
+                            variant="outline"
+                            onClick={() => openAuditTrail(run)}
+                            className="h-7 px-2 text-[11px] text-slate-600 hover:text-slate-900"
+                            title="View immutable audit log"
+                          >
+                            <History size={12} />
+                            Audit
+                          </Button>
+
                           {run.status === "PROCESSED" && (
+                            <>
+                              <Button
+                                variant="outline"
+                                disabled={isBusy}
+                                onClick={() => handleReturnToDraft(run.id)}
+                                className="h-7 px-2 text-[11px] text-amber-700 hover:bg-amber-50"
+                                title="Reject and return this run to draft"
+                              >
+                                Reject to Draft
+                              </Button>
+                              <Button
+                                variant="primary"
+                                disabled={isBusy}
+                                onClick={() => handleApprove(run.id)}
+                                className="h-7 px-2.5 text-[11px]"
+                              >
+                                {isBusy ? <Loader2 size={12} className="animate-spin" /> : "Approve"}
+                              </Button>
+                            </>
+                          )}
+
+                          {run.status === "APPROVED" && (
                             <Button
-                              variant="primary"
+                              variant="outline"
                               disabled={isBusy}
-                              onClick={() => handleApprove(run.id)}
-                              className="h-7 px-2.5 text-[11px]"
+                              onClick={() => handleReverseApproval(run.id)}
+                              className="h-7 px-2 text-[11px] text-amber-700 hover:bg-amber-50"
+                              title="Reverse approval back to processed status"
                             >
-                              {isBusy ? <Loader2 size={12} className="animate-spin" /> : "Approve"}
+                              Reverse Approval
                             </Button>
                           )}
                         </div>
@@ -293,7 +396,7 @@ export default function PayrollApproval() {
 
           <div className="flex justify-between items-center pt-3 border-t border-slate-100">
             <span className="text-xs text-slate-500">
-              {selectedRun?.status === "PROCESSED" ? "Ready for approval" : "Signed off"}
+              {selectedRun?.status === "PROCESSED" ? "Ready for approval" : selectedRun?.status === "APPROVED" ? "Approved for disbursement" : selectedRun?.status}
             </span>
             <div className="flex gap-2">
               <Button
@@ -304,18 +407,153 @@ export default function PayrollApproval() {
                 Close
               </Button>
               {selectedRun?.status === "PROCESSED" && (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      const runId = selectedRun.id;
+                      setSelectedRun(null);
+                      handleReturnToDraft(runId);
+                    }}
+                    className="h-8 px-3 text-xs text-amber-700 hover:bg-amber-50"
+                  >
+                    Reject to Draft
+                  </Button>
+                  <Button
+                    variant="primary"
+                    onClick={() => {
+                      handleApprove(selectedRun.id);
+                      setSelectedRun(null);
+                    }}
+                    className="h-8 px-3 text-xs"
+                  >
+                    Confirm Approval
+                  </Button>
+                </>
+              )}
+              {selectedRun?.status === "APPROVED" && (
                 <Button
-                  variant="primary"
+                  variant="outline"
                   onClick={() => {
-                    handleApprove(selectedRun.id);
+                    const runId = selectedRun.id;
                     setSelectedRun(null);
+                    handleReverseApproval(runId);
                   }}
-                  className="h-8 px-3 text-xs"
+                  className="h-8 px-3 text-xs text-amber-700 hover:bg-amber-50"
                 >
-                  Confirm Approval
+                  Reverse Approval
                 </Button>
               )}
             </div>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Audit Trail Modal */}
+      <Modal
+        isOpen={isAuditOpen && auditRun !== null}
+        onClose={() => {
+          setIsAuditOpen(false);
+          setAuditRun(null);
+        }}
+        title={`Audit Trail — ${auditRun ? formatPeriod(auditRun.period_key) : ""}`}
+        description={`Payroll Run ID: ${auditRun?.id || ""} | Current Status: ${auditRun?.status || ""}`}
+        maxWidth="max-w-4xl"
+      >
+        <div className="space-y-4">
+          {auditLoading ? (
+            <div className="flex h-48 items-center justify-center">
+              <Loader2 size={24} className="animate-spin text-indigo-600" />
+            </div>
+          ) : auditLogs.length === 0 ? (
+            <div className="py-8 text-center text-xs text-slate-500">
+              No audit logs recorded for this payroll run yet (or run was initialized prior to audit tracking).
+            </div>
+          ) : (
+            <div className="max-h-[60vh] overflow-y-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="sticky top-0 border-b border-slate-200 bg-slate-50 text-slate-600">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">Timestamp</th>
+                    <th className="px-3 py-2 font-medium">Action</th>
+                    <th className="px-3 py-2 font-medium">Transition</th>
+                    <th className="px-3 py-2 font-medium">Actor</th>
+                    <th className="px-3 py-2 font-medium">Ref / Reason</th>
+                    <th className="px-3 py-2 text-right font-medium">Net Payout</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-700">
+                  {auditLogs.map((log) => (
+                    <tr key={log.id} className="hover:bg-slate-50/70">
+                      <td className="px-3 py-2 text-slate-500 whitespace-nowrap">
+                        {new Date(log.created_at).toLocaleString()}
+                      </td>
+                      <td className="px-3 py-2 font-medium">
+                        <Badge
+                          variant={
+                            log.action === "PAID"
+                              ? "success"
+                              : log.action === "APPROVED"
+                              ? "info"
+                              : log.action.includes("REVERS") || log.action.includes("RETURN") || log.action.includes("DELET")
+                              ? "warning"
+                              : "neutral"
+                          }
+                        >
+                          {log.action}
+                        </Badge>
+                      </td>
+                      <td className="px-3 py-2 text-slate-600 font-mono text-[11px]">
+                        {log.from_status ? `${log.from_status} → ${log.to_status}` : `→ ${log.to_status}`}
+                      </td>
+                      <td className="px-3 py-2 text-slate-600">
+                        {log.actor_email ? (
+                          <span title={log.actor_role || ""}>{log.actor_email}</span>
+                        ) : log.actor_role ? (
+                          <span className="italic text-slate-400">{log.actor_role}</span>
+                        ) : (
+                          <span className="text-slate-400">System Admin</span>
+                        )}
+                        {log.ip_address && (
+                          <span className="block text-[10px] text-slate-400 font-mono">
+                            {log.ip_address}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-slate-500 max-w-xs truncate" title={log.reason || log.payment_reference || ""}>
+                        {log.payment_reference && (
+                          <span className="inline-block font-mono text-emerald-700 font-medium">
+                            Ref: {log.payment_reference}
+                          </span>
+                        )}
+                        {log.reason && (
+                          <span className="block text-[11px] text-slate-600 italic">
+                            {log.reason}
+                          </span>
+                        )}
+                        {!log.payment_reference && !log.reason && "—"}
+                      </td>
+                      <td className="px-3 py-2 text-right font-semibold text-slate-900">
+                        {formatCurrency(log.net_pay_amount)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div className="flex justify-end pt-3 border-t border-slate-100">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsAuditOpen(false);
+                setAuditRun(null);
+              }}
+              className="h-8 px-3 text-xs"
+            >
+              Close
+            </Button>
           </div>
         </div>
       </Modal>

@@ -6,6 +6,7 @@ import {
   CircleDollarSign,
   FileCheck2,
   Loader2,
+  Lock,
   Play,
   RefreshCw,
 } from "lucide-react";
@@ -62,6 +63,41 @@ export default function PayrollProcessing() {
       await loadRuns();
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Calculation failed");
+    } finally {
+      setProcessingRunId(null);
+    }
+  }
+
+  async function handleDeleteDraft(runId: string) {
+    if (!window.confirm("Are you sure you want to discard this draft payroll run? This will delete the draft cycle.")) {
+      return;
+    }
+    try {
+      setProcessingRunId(runId);
+      await apiClient.payroll.deleteRun(runId);
+      await loadRuns();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to delete draft run");
+    } finally {
+      setProcessingRunId(null);
+    }
+  }
+
+  async function handleReturnToDraft(runId: string) {
+    const reason = window.prompt(
+      "Enter an audit reason for returning this processed run to draft (e.g. Recalculation or employee change needed):"
+    );
+    if (reason === null) return;
+    if (reason.trim().length < 3) {
+      alert("A valid reversal reason of at least 3 characters is required.");
+      return;
+    }
+    try {
+      setProcessingRunId(runId);
+      await apiClient.payroll.returnToDraft(runId, reason.trim());
+      await loadRuns();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to return run to draft");
     } finally {
       setProcessingRunId(null);
     }
@@ -183,23 +219,43 @@ export default function PayrollProcessing() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         {run.status === "DRAFT" ? (
-                          <Button
-                            variant="primary"
-                            disabled={isBusy}
-                            onClick={() => handleProcess(run.id)}
-                            className="h-7 px-2.5 text-[11px]"
-                          >
-                            {isBusy ? (
-                              <Loader2 size={12} className="animate-spin" />
-                            ) : (
-                              <>
-                                <Play size={11} />
-                                Calculate Run
-                              </>
-                            )}
-                          </Button>
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              disabled={isBusy}
+                              onClick={() => handleDeleteDraft(run.id)}
+                              className="h-7 px-2 text-[11px] text-red-600 hover:bg-red-50"
+                              title="Discard this uncalculated draft run"
+                            >
+                              Discard
+                            </Button>
+                            <Button
+                              variant="primary"
+                              disabled={isBusy}
+                              onClick={() => handleProcess(run.id)}
+                              className="h-7 px-2.5 text-[11px]"
+                            >
+                              {isBusy ? (
+                                <Loader2 size={12} className="animate-spin" />
+                              ) : (
+                                <>
+                                  <Play size={11} />
+                                  Calculate Run
+                                </>
+                              )}
+                            </Button>
+                          </div>
                         ) : run.status === "PROCESSED" ? (
                           <div className="flex items-center justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              disabled={isBusy}
+                              onClick={() => handleReturnToDraft(run.id)}
+                              className="h-7 px-2 text-[11px] text-amber-700 hover:bg-amber-50"
+                              title="Clear calculations and return to draft"
+                            >
+                              Return to Draft
+                            </Button>
                             <Button
                               variant="outline"
                               disabled={isBusy}
@@ -215,7 +271,8 @@ export default function PayrollProcessing() {
                             </Link>
                           </div>
                         ) : (
-                          <span className="text-[11px] text-slate-400">
+                          <span className="inline-flex items-center gap-1 text-[11px] text-slate-400 font-medium">
+                            <Lock size={11} className="text-slate-400" />
                             Calculation locked ({run.status})
                           </span>
                         )}

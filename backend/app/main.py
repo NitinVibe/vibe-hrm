@@ -114,8 +114,6 @@ app.include_router(leave_requests_router, prefix="/api/v1")
 def health_check():
     return {
         "status": "ok",
-        "app": settings.APP_NAME,
-        "env": settings.APP_ENV,
     }
 
 
@@ -123,18 +121,10 @@ def health_check():
 def database_health_check():
     try:
         with engine.connect() as conn:
-            row = conn.execute(text("SELECT current_database();")).fetchone()
-        db_name = row[0] if row else "unknown"
-        host = engine.url.host or ""
-        is_neon = host.endswith(".neon.tech") or (".neon.tech" in host)
-        masked_host = (host[:6] + "..." + host[-10:]) if len(host) > 16 else host
+            conn.execute(text("SELECT 1;"))
         return {
             "status": "ok",
             "database": "connected",
-            "database_name": db_name,
-            "is_neon": is_neon,
-            "host": masked_host,
-            "pool_class": engine.pool.__class__.__name__,
         }
     except Exception as exc:
         logger.exception("Database health check failed: %s", exc)
@@ -145,3 +135,11 @@ def database_health_check():
                 "database": "unreachable",
             },
         )
+
+
+if __name__ == "__main__":
+    import os
+    import uvicorn
+
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("app.main:app", host="0.0.0.0", port=port, reload=False)

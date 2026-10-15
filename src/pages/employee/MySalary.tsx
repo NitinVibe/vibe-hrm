@@ -6,7 +6,7 @@ import {
   WalletCards,
 } from "lucide-react";
 
-import { apiClient } from "../../api/client";
+import { apiClient, ApiError } from "../../api/client";
 import Card from "../../components/ui/Card";
 import PageHeader from "../../components/ui/PageHeader";
 import StatCard from "../../components/ui/StatCard";
@@ -31,9 +31,15 @@ export default function MySalary() {
         }
       } catch (err: unknown) {
         if (active) {
-          // If 404, it means HR has not yet configured salary for this employee
-          const msg = err instanceof Error ? err.message : "Failed to load salary";
-          setError(msg);
+          // If 404, HR has not yet configured salary for this employee.
+          // This is an expected empty state, not a server or network failure.
+          if (err instanceof ApiError && err.status === 404) {
+            setSalary(null);
+            setError(null);
+          } else {
+            const msg = err instanceof Error ? err.message : "Failed to load salary";
+            setError(msg);
+          }
         }
       } finally {
         if (active) {
@@ -57,7 +63,7 @@ export default function MySalary() {
       />
 
       {error && !salary && (
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-600">
           {error}
         </div>
       )}

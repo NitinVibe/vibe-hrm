@@ -4,6 +4,7 @@ import {
   ArrowRight,
   BriefcaseBusiness,
   Building2,
+  Edit,
   Loader2,
   Plus,
   RefreshCw,
@@ -353,10 +354,24 @@ export default function Employees() {
 
                       {/* Actions */}
                       <td className="px-4 py-3.5 text-right">
-                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-indigo-600 hover:text-indigo-700">
-                          <span>View</span>
-                          <ArrowRight size={13} />
-                        </span>
+                        <div className="flex items-center justify-end gap-2.5">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/people/employees/${emp.id}/edit`);
+                            }}
+                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium text-slate-600 transition hover:bg-slate-100 hover:text-indigo-600"
+                            title="Edit Employee"
+                          >
+                            <Edit size={12} />
+                            <span>Edit</span>
+                          </button>
+                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-indigo-600 hover:text-indigo-700">
+                            <span>View</span>
+                            <ArrowRight size={13} />
+                          </span>
+                        </div>
                       </td>
                     </tr>
                   );

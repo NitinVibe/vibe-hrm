@@ -41,11 +41,23 @@ import type {
 import type {
   EmployeeSalary,
   EmployeeSalaryUpsertPayload,
+  PayrollCostAnalysisResponse,
   PayrollDashboardSummary,
   PayrollRun,
   PayrollRunCreatePayload,
   Payslip,
+  PayslipsFilterParams,
 } from "../types/payroll";
+import type {
+  LeaveType,
+  LeaveTypeCreatePayload,
+  LeavePolicy,
+  LeavePolicyCreatePayload,
+  LeaveBalance,
+  LeaveRequest,
+  LeaveRequestCreatePayload,
+  LeaveRequestActionPayload,
+} from "../types/leave";
 import { getStoredToken, removeStoredToken } from "../lib/session";
 
 
@@ -493,13 +505,93 @@ export const apiClient = {
         method: "POST",
       }),
 
-    markPaid: (runId: string): Promise<PayrollRun> =>
+    markPaid: (runId: string, payload?: import("../types/payroll").PayrollRunPaymentRequest): Promise<PayrollRun> =>
       apiRequest<PayrollRun>(`/api/v1/payroll/runs/${runId}/pay`, {
         method: "POST",
+        body: payload ? JSON.stringify(payload) : undefined,
+      }),
+
+    getRunAuditLogs: (runId: string): Promise<import("../types/payroll").PayrollAuditLog[]> =>
+      apiRequest<import("../types/payroll").PayrollAuditLog[]>(`/api/v1/payroll/runs/${runId}/audit-logs`, {
+        method: "GET",
+      }),
+
+    listAuditLogs: (params?: {
+      run_id?: string;
+      actor_id?: string;
+      action?: string;
+      limit?: number;
+      offset?: number;
+    }): Promise<import("../types/payroll").PayrollAuditLog[]> => {
+      const searchParams = new URLSearchParams();
+      if (params?.run_id) searchParams.append("run_id", params.run_id);
+      if (params?.actor_id) searchParams.append("actor_id", params.actor_id);
+      if (params?.action) searchParams.append("action", params.action);
+      if (params?.limit) searchParams.append("limit", String(params.limit));
+      if (params?.offset) searchParams.append("offset", String(params.offset));
+      const query = searchParams.toString();
+      const endpoint = query ? `/api/v1/payroll/audit-logs?${query}` : "/api/v1/payroll/audit-logs";
+      return apiRequest<import("../types/payroll").PayrollAuditLog[]>(endpoint, {
+        method: "GET",
+      });
+    },
+
+    deleteRun: (runId: string): Promise<void> =>
+      apiRequest<void>(`/api/v1/payroll/runs/${runId}`, {
+        method: "DELETE",
+      }),
+
+    returnToDraft: (runId: string, reason: string): Promise<PayrollRun> =>
+      apiRequest<PayrollRun>(`/api/v1/payroll/runs/${runId}/return-to-draft`, {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+      }),
+
+    reverseApproval: (
+      runId: string,
+      reason: string,
+      targetStatus: "PROCESSED" | "DRAFT" = "PROCESSED"
+    ): Promise<PayrollRun> =>
+      apiRequest<PayrollRun>(`/api/v1/payroll/runs/${runId}/reverse-approval`, {
+        method: "POST",
+        body: JSON.stringify({ reason, target_status: targetStatus }),
+      }),
+
+    reverseRun: (
+      runId: string,
+      reason: string,
+      targetStatus?: string
+    ): Promise<PayrollRun> =>
+      apiRequest<PayrollRun>(`/api/v1/payroll/runs/${runId}/reverse`, {
+        method: "POST",
+        body: JSON.stringify({ reason, target_status: targetStatus }),
       }),
 
     getRunPayslips: (runId: string): Promise<Payslip[]> =>
       apiRequest<Payslip[]>(`/api/v1/payroll/runs/${runId}/payslips`, {
+        method: "GET",
+      }),
+
+    listPayslips: (params?: PayslipsFilterParams): Promise<Payslip[]> => {
+      const searchParams = new URLSearchParams();
+      if (params?.period_key && params.period_key.trim()) {
+        searchParams.append("period_key", params.period_key.trim());
+      }
+      if (params?.department_id && params.department_id.trim()) {
+        searchParams.append("department_id", params.department_id.trim());
+      }
+      if (params?.search && params.search.trim()) {
+        searchParams.append("search", params.search.trim());
+      }
+      const query = searchParams.toString();
+      const endpoint = query ? `/api/v1/payroll/payslips?${query}` : "/api/v1/payroll/payslips";
+      return apiRequest<Payslip[]>(endpoint, {
+        method: "GET",
+      });
+    },
+
+    getCostAnalysis: (): Promise<PayrollCostAnalysisResponse> =>
+      apiRequest<PayrollCostAnalysisResponse>("/api/v1/payroll/analytics/cost-analysis", {
         method: "GET",
       }),
 
@@ -511,6 +603,75 @@ export const apiClient = {
     getMyPayslips: (): Promise<Payslip[]> =>
       apiRequest<Payslip[]>("/api/v1/payroll/my-payslips", {
         method: "GET",
+      }),
+  },
+
+  leave: {
+    listTypes: (activeOnly?: boolean): Promise<LeaveType[]> => {
+      const endpoint = activeOnly ? "/api/v1/leave-types?active_only=true" : "/api/v1/leave-types";
+      return apiRequest<LeaveType[]>(endpoint, { method: "GET" });
+    },
+
+    createType: (payload: LeaveTypeCreatePayload): Promise<LeaveType> =>
+      apiRequest<LeaveType>("/api/v1/leave-types", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+
+    listPolicies: (): Promise<LeavePolicy[]> =>
+      apiRequest<LeavePolicy[]>("/api/v1/leave-policies", { method: "GET" }),
+
+    createOrUpdatePolicy: (payload: LeavePolicyCreatePayload): Promise<LeavePolicy> =>
+      apiRequest<LeavePolicy>("/api/v1/leave-policies", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+
+    listBalances: (employeeId?: string, year?: number): Promise<LeaveBalance[]> => {
+      const params = new URLSearchParams();
+      if (employeeId) params.append("employee_id", employeeId);
+      if (year) params.append("year", year.toString());
+      const query = params.toString();
+      return apiRequest<LeaveBalance[]>(query ? `/api/v1/leave-balances?${query}` : "/api/v1/leave-balances", {
+        method: "GET",
+      });
+    },
+
+    getMyBalances: (year?: number): Promise<LeaveBalance[]> => {
+      const endpoint = year ? `/api/v1/leave-balances/me?year=${year}` : "/api/v1/leave-balances/me";
+      return apiRequest<LeaveBalance[]>(endpoint, { method: "GET" });
+    },
+
+    listRequests: (employeeId?: string, statusFilter?: string): Promise<LeaveRequest[]> => {
+      const params = new URLSearchParams();
+      if (employeeId) params.append("employee_id", employeeId);
+      if (statusFilter) params.append("status_filter", statusFilter);
+      const query = params.toString();
+      return apiRequest<LeaveRequest[]>(query ? `/api/v1/leave-requests?${query}` : "/api/v1/leave-requests", {
+        method: "GET",
+      });
+    },
+
+    getMyRequests: (statusFilter?: string): Promise<LeaveRequest[]> => {
+      const endpoint = statusFilter ? `/api/v1/leave-requests/me?status_filter=${statusFilter}` : "/api/v1/leave-requests/me";
+      return apiRequest<LeaveRequest[]>(endpoint, { method: "GET" });
+    },
+
+    apply: (payload: LeaveRequestCreatePayload): Promise<LeaveRequest> =>
+      apiRequest<LeaveRequest>("/api/v1/leave-requests", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+
+    action: (requestId: string, payload: LeaveRequestActionPayload): Promise<LeaveRequest> =>
+      apiRequest<LeaveRequest>(`/api/v1/leave-requests/${requestId}/action`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+
+    cancel: (requestId: string): Promise<LeaveRequest> =>
+      apiRequest<LeaveRequest>(`/api/v1/leave-requests/${requestId}/cancel`, {
+        method: "POST",
       }),
   },
 };

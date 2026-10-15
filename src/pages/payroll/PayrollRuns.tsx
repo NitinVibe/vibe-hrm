@@ -2,11 +2,17 @@ import { useEffect, useState } from "react";
 import {
   AlertCircle,
   Calculator,
+  CreditCard,
   FileText,
+  History,
+  Info,
   Loader2,
+  Lock,
   Plus,
   RefreshCw,
+  RotateCcw,
   Search,
+  Trash2,
 } from "lucide-react";
 
 import { apiClient } from "../../api/client";
@@ -23,6 +29,7 @@ import {
   getPayrollStatusBadgeVariant,
 } from "../../lib/payrollUtils";
 import type {
+  PayrollAuditLog,
   PayrollRun,
   PayrollRunCreatePayload,
   Payslip,
@@ -56,6 +63,22 @@ export default function PayrollRuns() {
   const [selectedRun, setSelectedRun] = useState<PayrollRun | null>(null);
   const [runPayslips, setRunPayslips] = useState<Payslip[]>([]);
   const [payslipsLoading, setPayslipsLoading] = useState(false);
+
+  // Payment Recording Modal State
+  const [isPaymentOpen, setIsPaymentOpen] = useState(false);
+  const [paymentRun, setPaymentRun] = useState<PayrollRun | null>(null);
+  const [paymentReference, setPaymentReference] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("BANK_TRANSFER");
+  const [paymentNotes, setPaymentNotes] = useState("");
+  const [confirmInternal, setConfirmInternal] = useState(false);
+  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+
+  // Audit History Modal State
+  const [isAuditOpen, setIsAuditOpen] = useState(false);
+  const [auditRun, setAuditRun] = useState<PayrollRun | null>(null);
+  const [auditLogs, setAuditLogs] = useState<PayrollAuditLog[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
 
   async function loadRuns() {
     try {
@@ -144,7 +167,7 @@ export default function PayrollRuns() {
   }
 
   async function handleApprove(runId: string) {
-    if (!window.confirm("Are you sure you want to approve this processed payroll run?")) {
+    if (!window.confirm("Are you sure you want to approve this processed payroll run? Note: Maker-checker policy requires that the user approving this run must be different from the user who processed it.")) {
       return;
     }
     try {
@@ -158,19 +181,127 @@ export default function PayrollRuns() {
     }
   }
 
-  async function handleMarkPaid(runId: string) {
-    if (!window.confirm("Are you sure you want to mark this payroll run and all its payslips as PAID?")) {
+  function openPaymentModal(run: PayrollRun) {
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    setPaymentRun(run);
+    setPaymentReference(`PAY-${run.period_key}-${randomSuffix}`);
+    setPaymentMethod("BANK_TRANSFER");
+    setPaymentNotes("");
+    setConfirmInternal(false);
+    setPaymentError(null);
+    setIsPaymentOpen(true);
+  }
+
+  async function handleConfirmPayment(e: React.FormEvent) {
+    e.preventDefault();
+    if (!paymentRun) return;
+
+    if (!paymentReference.trim() || paymentReference.trim().length < 3) {
+      setPaymentError("A valid payment reference with at least 3 characters is required.");
+      return;
+    }
+    if (!confirmInternal) {
+      setPaymentError("You must acknowledge that this action records internal payroll status only and does not initiate a real-world bank transfer.");
+      return;
+    }
+
+    try {
+      setPaymentSubmitting(true);
+      setPaymentError(null);
+      await apiClient.payroll.markPaid(paymentRun.id, {
+        payment_reference: paymentReference.trim(),
+        payment_method: paymentMethod,
+        notes: paymentNotes.trim() || null,
+        confirm_internal_recording: true,
+      });
+      setIsPaymentOpen(false);
+      setPaymentRun(null);
+      await loadRuns();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to record payment";
+      setPaymentError(msg);
+    } finally {
+      setPaymentSubmitting(false);
+    }
+  }
+
+  async function openAuditTrail(run: PayrollRun) {
+    setAuditRun(run);
+    setIsAuditOpen(true);
+    setAuditLogs([]);
+    try {
+      setAuditLoading(true);
+      const logs = await apiClient.payroll.getRunAuditLogs(run.id);
+      setAuditLogs(logs);
+    } catch (err: unknown) {
+      console.error("Failed to load audit logs:", err);
+    } finally {
+      setAuditLoading(false);
+    }
+  }
+
+  async function handleDeleteDraft(runId: string) {
+    if (!window.confirm("Are you sure you want to discard this draft payroll run? This will delete the draft cycle.")) {
       return;
     }
     try {
       setActionRunId(runId);
-      await apiClient.payroll.markPaid(runId);
+      await apiClient.payroll.deleteRun(runId);
       await loadRuns();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Failed to mark run as paid");
+      alert(err instanceof Error ? err.message : "Failed to delete draft run");
     } finally {
       setActionRunId(null);
     }
+  }
+
+  async function handleReturnToDraft(runId: string) {
+    const reason = window.prompt(
+      "Enter an audit reason for returning this processed run to draft (e.g. Compensation updates needed):"
+    );
+    if (reason === null) return;
+    if (reason.trim().length < 3) {
+      alert("A valid reversal reason of at least 3 characters is required.");
+      return;
+    }
+    try {
+      setActionRunId(runId);
+      await apiClient.payroll.returnToDraft(runId, reason.trim());
+      await loadRuns();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to return run to draft");
+    } finally {
+      setActionRunId(null);
+    }
+  }
+
+  async function handleReverseApproval(runId: string) {
+    const reason = window.prompt(
+      "Enter an audit reason for reversing approval on this payroll run:"
+    );
+    if (reason === null) return;
+    if (reason.trim().length < 3) {
+      alert("A valid reversal reason of at least 3 characters is required.");
+      return;
+    }
+    try {
+      setActionRunId(runId);
+      await apiClient.payroll.reverseApproval(runId, reason.trim(), "PROCESSED");
+      await loadRuns();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to reverse approval");
+    } finally {
+      setActionRunId(null);
+    }
+  }
+
+  function handlePaidReversalInfo() {
+    alert(
+      "PAID Payroll Run Protection:\n\n" +
+      "This payroll run is in 'PAID' status and reflects finalized accounting disbursement.\n\n" +
+      "Under financial and statutory compliance standards, PAID cycles cannot be deleted or reset to draft. " +
+      "Any salary corrections, bonus clawbacks, or retroactive adjustments must be applied through compensation adjustment items in the subsequent payroll cycle."
+    );
   }
 
   async function viewPayslips(runId: string) {
@@ -317,14 +448,26 @@ export default function PayrollRuns() {
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           {run.status === "DRAFT" && (
-                            <Button
-                              variant="primary"
-                              disabled={isBusy}
-                              onClick={() => handleProcess(run.id)}
-                              className="h-7 px-2 text-[11px]"
-                            >
-                              {isBusy ? <Loader2 size={12} className="animate-spin" /> : "Process"}
-                            </Button>
+                            <>
+                              <Button
+                                variant="primary"
+                                disabled={isBusy}
+                                onClick={() => handleProcess(run.id)}
+                                className="h-7 px-2 text-[11px]"
+                              >
+                                {isBusy ? <Loader2 size={12} className="animate-spin" /> : "Process"}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                disabled={isBusy}
+                                onClick={() => handleDeleteDraft(run.id)}
+                                className="h-7 px-2 text-[11px] text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                                title="Discard and delete draft run"
+                              >
+                                <Trash2 size={12} />
+                                Discard
+                              </Button>
+                            </>
                           )}
 
                           {run.status === "PROCESSED" && (
@@ -339,6 +482,16 @@ export default function PayrollRuns() {
                                 Re-calculate
                               </Button>
                               <Button
+                                variant="outline"
+                                disabled={isBusy}
+                                onClick={() => handleReturnToDraft(run.id)}
+                                className="h-7 px-2 text-[11px] text-amber-700 border-amber-200 hover:bg-amber-50"
+                                title="Safely return run to draft and remove pending payslips"
+                              >
+                                <RotateCcw size={11} />
+                                Return to Draft
+                              </Button>
+                              <Button
                                 variant="primary"
                                 disabled={isBusy}
                                 onClick={() => handleApprove(run.id)}
@@ -350,13 +503,38 @@ export default function PayrollRuns() {
                           )}
 
                           {run.status === "APPROVED" && (
+                            <>
+                              <Button
+                                variant="outline"
+                                disabled={isBusy}
+                                onClick={() => handleReverseApproval(run.id)}
+                                className="h-7 px-2 text-[11px] text-amber-700 border-amber-200 hover:bg-amber-50"
+                                title="Reverse approval back to processed status"
+                              >
+                                <RotateCcw size={11} />
+                                Reverse Approval
+                              </Button>
+                              <Button
+                                variant="primary"
+                                disabled={isBusy}
+                                onClick={() => openPaymentModal(run)}
+                                className="h-7 px-2 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
+                                title="Record payment confirmation and lock run"
+                              >
+                                Record Payment
+                              </Button>
+                            </>
+                          )}
+
+                          {run.status === "PAID" && (
                             <Button
-                              variant="primary"
-                              disabled={isBusy}
-                              onClick={() => handleMarkPaid(run.id)}
-                              className="h-7 px-2 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
+                              variant="ghost"
+                              onClick={handlePaidReversalInfo}
+                              className="h-7 px-2 text-[10px] text-slate-400 hover:text-slate-600"
+                              title="Paid runs cannot be reversed; click for policy"
                             >
-                              Mark as Paid
+                              <Lock size={11} className="mr-1 text-slate-400" />
+                              Reversal Locked
                             </Button>
                           )}
 
@@ -367,6 +545,16 @@ export default function PayrollRuns() {
                           >
                             <FileText size={12} />
                             Payslips
+                          </Button>
+
+                          <Button
+                            variant="outline"
+                            onClick={() => openAuditTrail(run)}
+                            className="h-7 px-2 text-[11px] text-slate-600 hover:text-slate-900"
+                            title="View audit history"
+                          >
+                            <History size={12} />
+                            Audit
                           </Button>
                         </div>
                       </td>
@@ -549,6 +737,244 @@ export default function PayrollRuns() {
             <Button
               variant="outline"
               onClick={() => setSelectedRun(null)}
+              className="h-8 px-3 text-xs"
+            >
+              Close
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Record Payment Modal */}
+      <Modal
+        isOpen={isPaymentOpen && paymentRun !== null}
+        onClose={() => {
+          if (!paymentSubmitting) {
+            setIsPaymentOpen(false);
+            setPaymentRun(null);
+          }
+        }}
+        title={`Record Payment — ${paymentRun ? formatPeriod(paymentRun.period_key) : ""}`}
+        description={`Cycle: ${paymentRun?.period_key} | Employees: ${paymentRun?.total_employees || 0} | Net Payout: ${formatCurrency(paymentRun?.total_net_pay)}`}
+      >
+        <form onSubmit={handleConfirmPayment} className="space-y-4">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            <div className="flex items-start gap-2">
+              <Info size={16} className="mt-0.5 shrink-0 text-amber-600" />
+              <div>
+                <span className="font-semibold">Internal Status Confirmation Only:</span>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-amber-700">
+                  Recording payment transitions this run and all generated payslips to <strong>PAID</strong> in Vibe HRM.
+                  This is an internal bookkeeping action. It <strong>does not</strong> execute a real-world bank transfer or disburse funds externally.
+                  Once marked as PAID, this run is permanently locked and cannot be reversed or deleted.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {paymentError && (
+            <div className="flex items-center gap-2 rounded-lg bg-red-50 p-3 text-xs text-red-600">
+              <AlertCircle size={15} className="shrink-0" />
+              <span>{paymentError}</span>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-medium text-slate-700">
+              Payment Reference *
+            </label>
+            <input
+              type="text"
+              required
+              placeholder="e.g. NEFT-202610-001 or BATCH-PAY-9812"
+              value={paymentReference}
+              onChange={(e) => setPaymentReference(e.target.value)}
+              className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-indigo-400"
+            />
+            <p className="mt-1 text-[10px] text-slate-400">
+              Enter corporate banking transfer reference, cheque number, or internal batch ID.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-700">
+              Payment Method
+            </label>
+            <select
+              value={paymentMethod}
+              onChange={(e) => setPaymentMethod(e.target.value)}
+              className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-indigo-400 bg-white"
+            >
+              <option value="BANK_TRANSFER">Bank Transfer (NEFT / RTGS / IMPS)</option>
+              <option value="DIRECT_DEPOSIT">Direct Deposit / ACH</option>
+              <option value="CHEQUE">Corporate Cheque</option>
+              <option value="CASH">Cash Disbursement</option>
+              <option value="MANUAL_RECORD">Manual Accounting Record</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-700">
+              Notes (Optional)
+            </label>
+            <input
+              type="text"
+              placeholder="e.g. October payroll disbursement approved by finance"
+              value={paymentNotes}
+              onChange={(e) => setPaymentNotes(e.target.value)}
+              className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-indigo-400"
+            />
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={confirmInternal}
+                onChange={(e) => setConfirmInternal(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+              />
+              <span className="text-xs text-slate-700 font-medium">
+                I understand and confirm that this records internal payroll status only and does NOT initiate an automatic bank transfer.
+              </span>
+            </label>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={paymentSubmitting}
+              onClick={() => {
+                setIsPaymentOpen(false);
+                setPaymentRun(null);
+              }}
+              className="h-8 px-3 text-xs"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={paymentSubmitting || !confirmInternal}
+              className="h-8 px-3 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              {paymentSubmitting ? (
+                <>
+                  <Loader2 size={13} className="animate-spin" />
+                  Recording...
+                </>
+              ) : (
+                <>
+                  <CreditCard size={13} />
+                  Record Payment
+                </>
+              )}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Audit Trail Modal */}
+      <Modal
+        isOpen={isAuditOpen && auditRun !== null}
+        onClose={() => {
+          setIsAuditOpen(false);
+          setAuditRun(null);
+        }}
+        title={`Audit Trail — ${auditRun ? formatPeriod(auditRun.period_key) : ""}`}
+        description={`Payroll Run ID: ${auditRun?.id || ""} | Current Status: ${auditRun?.status || ""}`}
+        maxWidth="max-w-4xl"
+      >
+        <div className="space-y-4">
+          {auditLoading ? (
+            <div className="flex h-48 items-center justify-center">
+              <Loader2 size={24} className="animate-spin text-indigo-600" />
+            </div>
+          ) : auditLogs.length === 0 ? (
+            <div className="py-8 text-center text-xs text-slate-500">
+              No audit logs recorded for this payroll run yet (or run was initialized prior to audit tracking).
+            </div>
+          ) : (
+            <div className="max-h-[60vh] overflow-y-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="sticky top-0 border-b border-slate-200 bg-slate-50 text-slate-600">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">Timestamp</th>
+                    <th className="px-3 py-2 font-medium">Action</th>
+                    <th className="px-3 py-2 font-medium">Transition</th>
+                    <th className="px-3 py-2 font-medium">Actor</th>
+                    <th className="px-3 py-2 font-medium">Ref / Reason</th>
+                    <th className="px-3 py-2 text-right font-medium">Net Payout</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-700">
+                  {auditLogs.map((log) => (
+                    <tr key={log.id} className="hover:bg-slate-50/70">
+                      <td className="px-3 py-2 text-slate-500 whitespace-nowrap">
+                        {new Date(log.created_at).toLocaleString()}
+                      </td>
+                      <td className="px-3 py-2 font-medium">
+                        <Badge
+                          variant={
+                            log.action === "PAID"
+                              ? "success"
+                              : log.action === "APPROVED"
+                              ? "info"
+                              : log.action.includes("REVERS") || log.action.includes("RETURN") || log.action.includes("DELET")
+                              ? "warning"
+                              : "neutral"
+                          }
+                        >
+                          {log.action}
+                        </Badge>
+                      </td>
+                      <td className="px-3 py-2 text-slate-600 font-mono text-[11px]">
+                        {log.from_status ? `${log.from_status} → ${log.to_status}` : `→ ${log.to_status}`}
+                      </td>
+                      <td className="px-3 py-2 text-slate-600">
+                        {log.actor_email ? (
+                          <span title={log.actor_role || ""}>{log.actor_email}</span>
+                        ) : log.actor_role ? (
+                          <span className="italic text-slate-400">{log.actor_role}</span>
+                        ) : (
+                          <span className="text-slate-400">System Admin</span>
+                        )}
+                        {log.ip_address && (
+                          <span className="block text-[10px] text-slate-400 font-mono">
+                            {log.ip_address}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-slate-500 max-w-xs truncate" title={log.reason || log.payment_reference || ""}>
+                        {log.payment_reference && (
+                          <span className="inline-block font-mono text-emerald-700 font-medium">
+                            Ref: {log.payment_reference}
+                          </span>
+                        )}
+                        {log.reason && (
+                          <span className="block text-[11px] text-slate-600 italic">
+                            {log.reason}
+                          </span>
+                        )}
+                        {!log.payment_reference && !log.reason && "—"}
+                      </td>
+                      <td className="px-3 py-2 text-right font-semibold text-slate-900">
+                        {formatCurrency(log.net_pay_amount)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div className="flex justify-end pt-3 border-t border-slate-100">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsAuditOpen(false);
+                setAuditRun(null);
+              }}
               className="h-8 px-3 text-xs"
             >
               Close

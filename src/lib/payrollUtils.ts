@@ -53,3 +53,43 @@ export function getPaymentStatusBadgeVariant(
 ): "warning" | "success" {
   return status === "PAID" ? "success" : "warning";
 }
+
+export interface CSVColumn<T = object> {
+  key: keyof T | string;
+  label: string;
+  formatter?: (value: unknown, row: T) => string;
+}
+
+export function exportToCSV<T extends object>(
+  filename: string,
+  rows: T[],
+  columns: CSVColumn<T>[],
+): void {
+  if (!rows || rows.length === 0) return;
+
+  const headerLine = columns
+    .map((col) => `"${col.label.replace(/"/g, '""')}"`)
+    .join(",");
+
+  const rowLines = rows.map((row) =>
+    columns
+      .map((col) => {
+        const rawVal = (row as Record<string, unknown>)[col.key as string];
+        const valStr = col.formatter
+          ? col.formatter(rawVal, row)
+          : rawVal === null || rawVal === undefined
+          ? ""
+          : String(rawVal);
+        return `"${valStr.replace(/"/g, '""')}"`;
+      })
+      .join(","),
+  );
+
+  const csvContent = "data:text/csv;charset=utf-8," + encodeURIComponent([headerLine, ...rowLines].join("\n"));
+  const link = document.createElement("a");
+  link.setAttribute("href", csvContent);
+  link.setAttribute("download", filename.endsWith(".csv") ? filename : `${filename}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}

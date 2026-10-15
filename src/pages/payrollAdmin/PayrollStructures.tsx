@@ -1,4 +1,5 @@
-import { Layers3, Plus } from "lucide-react";
+import { ArrowRight, Layers3 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
@@ -6,15 +7,17 @@ import EmptyState from "../../components/ui/EmptyState";
 import PageHeader from "../../components/ui/PageHeader";
 
 export default function PayrollStructures() {
+  const navigate = useNavigate();
+
   return (
-    <div>
+    <div className="space-y-4">
       <PageHeader
         title="Salary Structures"
-        description="Define salary structures and component rules."
+        description="Employee compensation in Vibe HRM is configured directly per employee."
         actions={
-          <Button>
-            <Plus size={16} />
-            New Structure
+          <Button onClick={() => navigate("/payroll-admin/salary")} className="h-8 px-3 text-xs">
+            Manage Employee Salaries
+            <ArrowRight size={14} />
           </Button>
         }
       />
@@ -22,10 +25,16 @@ export default function PayrollStructures() {
       <Card>
         <EmptyState
           icon={Layers3}
-          title="No salary structures"
-          description="Configured salary structures will appear here."
+          title="Direct Employee Compensation"
+          description="Compensation packages are configured directly on employee records. Please navigate to Employee Salary to view and configure salaries."
+          action={
+            <Button onClick={() => navigate("/payroll-admin/salary")} className="h-8 px-3 text-xs">
+              Go to Employee Salary
+              <ArrowRight size={14} />
+            </Button>
+          }
         />
       </Card>
     </div>
   );
-}
+}

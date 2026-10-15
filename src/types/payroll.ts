@@ -90,3 +90,65 @@ export interface PayrollDashboardSummary {
   total_runs: number;
   latest_period: string | null;
 }
+
+export interface DepartmentCostBreakdown {
+  department_name: string;
+  employee_count: number;
+  total_gross_pay: number | string;
+  percentage_of_total: number | string;
+}
+
+export interface PayrollPeriodTrend {
+  period_key: string;
+  total_employees: number;
+  total_gross_pay: number | string;
+  total_net_pay: number | string;
+  total_deductions: number | string;
+}
+
+export interface PayrollCostAnalysisResponse {
+  total_gross_cost: number | string;
+  total_net_payout: number | string;
+  total_deductions: number | string;
+  total_employees_paid: number;
+  average_gross_pay_per_employee: number | string;
+  department_breakdown: DepartmentCostBreakdown[];
+  period_trends: PayrollPeriodTrend[];
+}
+
+export interface PayslipsFilterParams {
+  period_key?: string;
+  department_id?: string;
+  search?: string;
+}
+
+export interface PayrollRunReversalPayload {
+  reason: string;
+  target_status?: "PROCESSED" | "DRAFT";
+}
+
+export interface PayrollRunPaymentRequest {
+  payment_reference: string;
+  payment_method?: string;
+  notes?: string | null;
+  confirm_internal_recording: boolean;
+}
+
+export interface PayrollAuditLog {
+  id: string;
+  organization_id: string;
+  payroll_run_id: string;
+  actor_id: string | null;
+  actor_email: string | null;
+  actor_role: string | null;
+  action: string;
+  from_status: PayrollRunStatus | null;
+  to_status: PayrollRunStatus;
+  reason: string | null;
+  payment_reference: string | null;
+  affected_employees_count: number;
+  gross_pay_amount: number | string;
+  net_pay_amount: number | string;
+  ip_address: string | null;
+  created_at: string;
+}

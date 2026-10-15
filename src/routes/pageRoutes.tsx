@@ -4,6 +4,7 @@ import AdminDashboard from "../pages/admin/AdminDashboard";
 import Employees from "../pages/people/Employees";
 import EmployeeProfile from "../pages/people/EmployeeProfile";
 import AddEmployee from "../pages/people/AddEmployee";
+import EditEmployee from "../pages/people/EditEmployee";
 import Departments from "../pages/people/Departments";
 import Designations from "../pages/people/Designations";
 import Teams from "../pages/people/Teams";
@@ -297,7 +298,8 @@ export const pageRoutes = [
   // People
   { path: "/people/employees", element: <Employees /> },
   { path: "/people/employees/new", element: <AddEmployee /> },
-  { path: "/people/employees/:id", element: <EmployeeProfile />, },
+  { path: "/people/employees/:id", element: <EmployeeProfile /> },
+  { path: "/people/employees/:id/edit", element: <EditEmployee /> },
   { path: "/people/onboarding", element: <Onboarding /> },
   { path: "/people/offboarding", element: <Offboarding /> },
   { path: "/people/departments", element: <Departments /> },
