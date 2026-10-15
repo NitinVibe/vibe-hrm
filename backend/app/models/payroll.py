@@ -25,6 +25,7 @@ from app.db.base import Base
 if TYPE_CHECKING:
     from app.models.employee import Employee
     from app.models.organization import Organization
+    from app.models.user import User
 
 
 class EmployeeSalary(Base):
@@ -437,4 +438,134 @@ class Payslip(Base):
         foreign_keys=[organization_id, employee_id],
         overlaps="organization,payslips,payroll_run",
     )
+
+
+class PayrollAuditLog(Base):
+    __tablename__ = "payroll_audit_logs"
+
+    id: Mapped[UUID] = mapped_column(
+        primary_key=True,
+        default=uuid4,
+    )
+
+    organization_id: Mapped[UUID] = mapped_column(
+        nullable=False,
+        index=True,
+    )
+
+    payroll_run_id: Mapped[UUID] = mapped_column(
+        nullable=False,
+        index=True,
+    )
+
+    actor_user_id: Mapped[UUID | None] = mapped_column(
+        nullable=True,
+        index=True,
+    )
+
+    action: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        index=True,
+    )
+
+    from_status: Mapped[str | None] = mapped_column(
+        String(20),
+        nullable=True,
+    )
+
+    to_status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+    )
+
+    reason: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+    )
+
+    notes: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+    )
+
+    total_employees: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    total_gross_pay: Mapped[Decimal | None] = mapped_column(
+        Numeric(14, 2),
+        nullable=True,
+    )
+
+    total_deductions: Mapped[Decimal | None] = mapped_column(
+        Numeric(14, 2),
+        nullable=True,
+    )
+
+    total_net_pay: Mapped[Decimal | None] = mapped_column(
+        Numeric(14, 2),
+        nullable=True,
+    )
+
+    payment_method: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+    )
+
+    payment_reference: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+    )
+
+    ip_address: Mapped[str | None] = mapped_column(
+        String(45),
+        nullable=True,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        server_default=func.now(),
+        index=True,
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["organization_id"],
+            ["organizations.id"],
+            name="fk_payroll_audit_logs_org",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "payroll_run_id"],
+            ["payroll_runs.organization_id", "payroll_runs.id"],
+            name="fk_payroll_audit_logs_run_org",
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["actor_user_id"],
+            ["users.id"],
+            name="fk_payroll_audit_logs_actor",
+            ondelete="SET NULL",
+        ),
+    )
+
+    # Relationships
+    organization: Mapped[Organization] = relationship(
+        "Organization",
+        foreign_keys=[organization_id],
+    )
+    payroll_run: Mapped[PayrollRun] = relationship(
+        "PayrollRun",
+        foreign_keys=[organization_id, payroll_run_id],
+        overlaps="organization",
+    )
+    actor_user: Mapped[User | None] = relationship(
+        "User",
+        foreign_keys=[actor_user_id],
+    )
+
 

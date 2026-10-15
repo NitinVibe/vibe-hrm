@@ -9,6 +9,10 @@ from app.api.v1.auth import router as auth_router
 from app.api.v1.departments import router as departments_router
 from app.api.v1.designations import router as designations_router
 from app.api.v1.employees import router as employees_router
+from app.api.v1.leave_balances import router as leave_balances_router
+from app.api.v1.leave_policies import router as leave_policies_router
+from app.api.v1.leave_requests import router as leave_requests_router
+from app.api.v1.leave_types import router as leave_types_router
 from app.api.v1.payroll import router as payroll_router
 from app.api.v1.shifts import router as shifts_router
 from app.core.config import settings
@@ -100,6 +104,10 @@ app.include_router(designations_router, prefix="/api/v1")
 app.include_router(shifts_router, prefix="/api/v1")
 app.include_router(attendance_router, prefix="/api/v1")
 app.include_router(payroll_router, prefix="/api/v1")
+app.include_router(leave_types_router, prefix="/api/v1")
+app.include_router(leave_policies_router, prefix="/api/v1")
+app.include_router(leave_balances_router, prefix="/api/v1")
+app.include_router(leave_requests_router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["Health"])

@@ -11,6 +11,9 @@ from pydantic import (
 )
 
 
+from typing import Any
+
+
 class EmployeeBase(BaseModel):
     first_name: str = Field(..., max_length=100)
     last_name: str | None = Field(default=None, max_length=100)
@@ -20,6 +23,21 @@ class EmployeeBase(BaseModel):
     joining_date: date | None = None
     employment_status: str = Field(default="ACTIVE", max_length=30)
 
+    @field_validator("email", "phone", "date_of_birth", "joining_date", mode="before")
+    @classmethod
+    def empty_str_to_none_base(cls, v: Any) -> Any:
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
+
+    @model_validator(mode="after")
+    def validate_dates_base(self) -> "EmployeeBase":
+        if self.date_of_birth and self.date_of_birth > date.today():
+            raise ValueError("Date of birth cannot be in the future")
+        if self.date_of_birth and self.joining_date and self.joining_date < self.date_of_birth:
+            raise ValueError("Joining date must be after date of birth")
+        return self
+
 
 class EmployeeCreate(EmployeeBase):
     employee_code: str = Field(..., max_length=50)
@@ -27,6 +45,13 @@ class EmployeeCreate(EmployeeBase):
     department_id: UUID | None = None
     designation_id: UUID | None = None
     shift_id: UUID | None = None
+
+    @field_validator("user_id", "department_id", "designation_id", "shift_id", mode="before")
+    @classmethod
+    def empty_str_to_none_create(cls, v: Any) -> Any:
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
 
     @field_validator("employee_code", "first_name")
     @classmethod
@@ -65,6 +90,23 @@ class EmployeeUpdate(BaseModel):
     designation_id: UUID | None = None
     shift_id: UUID | None = None
 
+    @field_validator(
+        "email",
+        "phone",
+        "date_of_birth",
+        "joining_date",
+        "user_id",
+        "department_id",
+        "designation_id",
+        "shift_id",
+        mode="before",
+    )
+    @classmethod
+    def empty_str_to_none_update(cls, v: Any) -> Any:
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
+
     @field_validator("employee_code", "first_name")
     @classmethod
     def validate_non_empty_if_provided(cls, v: str | None) -> str | None:
@@ -82,6 +124,14 @@ class EmployeeUpdate(BaseModel):
             trimmed = v.strip()
             return trimmed if trimmed else None
         return None
+
+    @model_validator(mode="after")
+    def validate_dates_update(self) -> "EmployeeUpdate":
+        if self.date_of_birth and self.date_of_birth > date.today():
+            raise ValueError("Date of birth cannot be in the future")
+        if self.date_of_birth and self.joining_date and self.joining_date < self.date_of_birth:
+            raise ValueError("Joining date must be after date of birth")
+        return self
 
 
 class EmployeeResponse(BaseModel):

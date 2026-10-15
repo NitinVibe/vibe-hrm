@@ -1,4 +1,6 @@
 from datetime import date
+import os
+from pathlib import Path
 import subprocess
 import sys
 import unittest
@@ -510,8 +512,13 @@ class EmployeeAssignmentTestCase(unittest.TestCase):
 class MigrationStructureTestCase(unittest.TestCase):
     def test_offline_sql_generation(self):
         """Ensure alembic upgrade and downgrade static SQL generate cleanly."""
+        backend_dir = Path(__file__).resolve().parent.parent
+        env = os.environ.copy()
+        env["DATABASE_URL"] = "postgresql://test_user:test_pass@localhost:5432/test_db"
         upgrade_res = subprocess.run(
             [sys.executable, "-m", "alembic", "upgrade", "0650ac39674b:e93c4c5a856d", "--sql"],
+            cwd=str(backend_dir),
+            env=env,
             capture_output=True,
             text=True,
         )
@@ -523,6 +530,8 @@ class MigrationStructureTestCase(unittest.TestCase):
 
         downgrade_res = subprocess.run(
             [sys.executable, "-m", "alembic", "downgrade", "e93c4c5a856d:0650ac39674b", "--sql"],
+            cwd=str(backend_dir),
+            env=env,
             capture_output=True,
             text=True,
         )
