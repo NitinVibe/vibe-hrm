@@ -47,7 +47,7 @@ cors_kwargs = {
     "allow_origins": cors_origins,
     "allow_credentials": True,
     "allow_methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    "allow_headers": ["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"],
+    "allow_headers": ["*"],
 }
 
 if settings.CORS_ORIGIN_REGEX:
@@ -96,21 +96,34 @@ async def global_unhandled_exception_handler(request: Request, exc: Exception):
     )
 
 
-# Register API v1 routers
-app.include_router(auth_router, prefix="/api/v1")
-app.include_router(employees_router, prefix="/api/v1")
-app.include_router(departments_router, prefix="/api/v1")
-app.include_router(designations_router, prefix="/api/v1")
-app.include_router(shifts_router, prefix="/api/v1")
-app.include_router(attendance_router, prefix="/api/v1")
-app.include_router(payroll_router, prefix="/api/v1")
-app.include_router(leave_types_router, prefix="/api/v1")
-app.include_router(leave_policies_router, prefix="/api/v1")
-app.include_router(leave_balances_router, prefix="/api/v1")
-app.include_router(leave_requests_router, prefix="/api/v1")
+# Register API v1 routers with dual prefix support (/api/v1 and /v1) to guarantee compatibility across Vercel rewrites and proxies
+for prefix in ("/api/v1", "/v1"):
+    app.include_router(auth_router, prefix=prefix)
+    app.include_router(employees_router, prefix=prefix)
+    app.include_router(departments_router, prefix=prefix)
+    app.include_router(designations_router, prefix=prefix)
+    app.include_router(shifts_router, prefix=prefix)
+    app.include_router(attendance_router, prefix=prefix)
+    app.include_router(payroll_router, prefix=prefix)
+    app.include_router(leave_types_router, prefix=prefix)
+    app.include_router(leave_policies_router, prefix=prefix)
+    app.include_router(leave_balances_router, prefix=prefix)
+    app.include_router(leave_requests_router, prefix=prefix)
+
+
+@app.get("/api", tags=["Root"])
+@app.get("/api/v1", tags=["Root"])
+def api_root():
+    return {
+        "app": settings.APP_NAME,
+        "status": "ok",
+        "docs": "/docs" if settings.ENABLE_DOCS else None,
+    }
 
 
 @app.get("/health", tags=["Health"])
+@app.get("/api/health", tags=["Health"])
+@app.get("/api/v1/health", tags=["Health"])
 def health_check():
     return {
         "status": "ok",
@@ -118,6 +131,8 @@ def health_check():
 
 
 @app.get("/health/db", tags=["Health"])
+@app.get("/api/health/db", tags=["Health"])
+@app.get("/api/v1/health/db", tags=["Health"])
 def database_health_check():
     try:
         with engine.connect() as conn:
