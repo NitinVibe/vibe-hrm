@@ -31,6 +31,12 @@ import Modal from "../../components/ui/Modal";
 import PageHeader from "../../components/ui/PageHeader";
 import { apiClient, ApiError } from "../../api/client";
 import type { Employee, EmployeeAccountStatusResponse } from "../../types/employee";
+import type { AttendanceRecord } from "../../types/attendance";
+import type { LeaveBalance, LeaveRequest } from "../../types/leave";
+import type { Payslip, EmployeeSalary } from "../../types/payroll";
+import { formatDate, formatDuration, formatTime, getStatusBadgeVariant as getAttendanceBadgeVariant, getStatusLabel } from "../../lib/attendanceUtils";
+import { formatCurrency, formatPeriod, getPaymentStatusBadgeVariant } from "../../lib/payrollUtils";
+import { Link } from "react-router-dom";
 
 type Tab =
   | "overview"
@@ -415,6 +421,18 @@ function EmployeeTabContent({
         </div>
       </Card>
     );
+  }
+
+  if (activeTab === "attendance") {
+    return <AttendanceProfileTab employeeId={employee.id} />;
+  }
+
+  if (activeTab === "leave") {
+    return <LeaveProfileTab employeeId={employee.id} />;
+  }
+
+  if (activeTab === "payroll") {
+    return <PayrollProfileTab employee={employee} />;
   }
 
   const tab = tabs.find((item) => item.id === activeTab);
@@ -1047,5 +1065,438 @@ function AccountSecurityCard({
         </form>
       </Modal>
     </Card>
+  );
+}
+
+function AttendanceProfileTab({ employeeId }: { employeeId: string }) {
+  const [records, setRecords] = useState<AttendanceRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    apiClient.attendance.list({ employee_id: employeeId })
+      .then((data) => {
+        if (active) {
+          setRecords(data || []);
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (active) {
+          setError(err instanceof ApiError ? err.message : "Failed to load attendance records");
+          setLoading(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [employeeId]);
+
+  if (loading) {
+    return (
+      <Card className="p-8 text-center">
+        <Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" />
+        <p className="mt-2 text-xs text-slate-500">Loading attendance records...</p>
+      </Card>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card className="p-6">
+        <div className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+          <AlertCircle size={15} className="shrink-0 text-rose-500" />
+          <span>{error}</span>
+        </div>
+      </Card>
+    );
+  }
+
+  if (records.length === 0) {
+    return (
+      <Card className="p-6">
+        <EmptyState
+          icon={CalendarDays}
+          title="No attendance records"
+          description="No attendance logs have been recorded for this employee yet."
+        />
+      </Card>
+    );
+  }
+
+  const presentCount = records.filter((r) => r.status?.toUpperCase() === "PRESENT").length;
+  const lateCount = records.filter((r) => r.status?.toUpperCase() === "LATE").length;
+  const halfDayCount = records.filter((r) => r.status?.toUpperCase() === "HALF_DAY").length;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Card className="p-4">
+          <p className="text-xs font-medium text-slate-500">Total Recorded Days</p>
+          <p className="mt-1 text-xl font-bold text-slate-800">{records.length}</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs font-medium text-emerald-600">Present Days</p>
+          <p className="mt-1 text-xl font-bold text-emerald-700">{presentCount}</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs font-medium text-amber-600">Late / Half Days</p>
+          <p className="mt-1 text-xl font-bold text-amber-700">{lateCount + halfDayCount}</p>
+        </Card>
+      </div>
+
+      <Card className="overflow-hidden">
+        <div className="border-b border-slate-100 px-6 py-4">
+          <h3 className="text-sm font-semibold text-slate-800">Attendance Log</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold uppercase text-slate-500">
+              <tr>
+                <th className="px-6 py-3">Date</th>
+                <th className="px-6 py-3">Check In</th>
+                <th className="px-6 py-3">Check Out</th>
+                <th className="px-6 py-3">Duration</th>
+                <th className="px-6 py-3">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-slate-700">
+              {records.map((r) => (
+                <tr key={r.id} className="hover:bg-slate-50/60">
+                  <td className="px-6 py-3 font-medium text-slate-900">{formatDate(r.attendance_date)}</td>
+                  <td className="px-6 py-3 font-mono">{formatTime(r.check_in_time)}</td>
+                  <td className="px-6 py-3 font-mono">{formatTime(r.check_out_time)}</td>
+                  <td className="px-6 py-3">{formatDuration(r.working_minutes)}</td>
+                  <td className="px-6 py-3">
+                    <Badge variant={getAttendanceBadgeVariant(r.status)}>
+                      {getStatusLabel(r.status)}
+                    </Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function LeaveProfileTab({ employeeId }: { employeeId: string }) {
+  const [balances, setBalances] = useState<LeaveBalance[]>([]);
+  const [requests, setRequests] = useState<LeaveRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([
+      apiClient.leave.listBalances(employeeId),
+      apiClient.leave.listRequests(employeeId),
+    ])
+      .then(([bRes, rRes]) => {
+        if (active) {
+          setBalances(bRes || []);
+          setRequests(rRes || []);
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (active) {
+          setError(err instanceof ApiError ? err.message : "Failed to load leave data");
+          setLoading(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [employeeId]);
+
+  if (loading) {
+    return (
+      <Card className="p-8 text-center">
+        <Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" />
+        <p className="mt-2 text-xs text-slate-500">Loading leave details...</p>
+      </Card>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card className="p-6">
+        <div className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+          <AlertCircle size={15} className="shrink-0 text-rose-500" />
+          <span>{error}</span>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Leave Balances</h3>
+        {balances.length === 0 ? (
+          <Card className="p-4 text-center text-xs text-slate-500">
+            No leave policy balances allocated for this employee yet.
+          </Card>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {balances.map((b) => (
+              <Card key={b.id} className="p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-slate-800">{b.leave_type_name}</p>
+                  <span className="text-[10px] text-slate-400">Year {b.year}</span>
+                </div>
+                <div className="mt-3 flex items-baseline justify-between text-xs">
+                  <div>
+                    <span className="text-lg font-bold text-slate-900">{b.available_days}</span>
+                    <span className="text-slate-500"> days left</span>
+                  </div>
+                  <div className="text-right text-[11px] text-slate-400">
+                    <p>Allocated: {b.total_days}d</p>
+                    <p>Used: {b.used_days}d</p>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <Card className="overflow-hidden">
+        <div className="border-b border-slate-100 px-6 py-4">
+          <h3 className="text-sm font-semibold text-slate-800">Leave Requests</h3>
+        </div>
+        {requests.length === 0 ? (
+          <div className="p-6">
+            <EmptyState
+              icon={ClipboardList}
+              title="No leave requests"
+              description="This employee has not submitted any leave applications."
+            />
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold uppercase text-slate-500">
+                <tr>
+                  <th className="px-6 py-3">Leave Type</th>
+                  <th className="px-6 py-3">Dates</th>
+                  <th className="px-6 py-3">Days</th>
+                  <th className="px-6 py-3">Reason</th>
+                  <th className="px-6 py-3">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-700">
+                {requests.map((req) => {
+                  let badgeVariant: "success" | "warning" | "danger" | "neutral" = "neutral";
+                  if (req.status === "APPROVED") badgeVariant = "success";
+                  else if (req.status === "PENDING") badgeVariant = "warning";
+                  else if (req.status === "REJECTED") badgeVariant = "danger";
+
+                  return (
+                    <tr key={req.id} className="hover:bg-slate-50/60">
+                      <td className="px-6 py-3 font-medium text-slate-900">{req.leave_type_name}</td>
+                      <td className="px-6 py-3">
+                        {req.start_date} {req.start_date !== req.end_date && `to ${req.end_date}`}
+                      </td>
+                      <td className="px-6 py-3 font-semibold">{req.total_days}</td>
+                      <td className="px-6 py-3 max-w-xs truncate text-slate-500" title={req.reason || ""}>
+                        {req.reason || "—"}
+                      </td>
+                      <td className="px-6 py-3">
+                        <Badge variant={badgeVariant}>{req.status}</Badge>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function PayrollProfileTab({ employee }: { employee: Employee }) {
+  const [salary, setSalary] = useState<EmployeeSalary | null>(null);
+  const [payslips, setPayslips] = useState<Payslip[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    Promise.allSettled([
+      apiClient.payroll.getSalary(employee.id),
+      apiClient.payroll.listPayslips({ search: employee.employee_code || undefined }),
+    ])
+      .then(([salRes, payRes]) => {
+        if (!active) return;
+        if (salRes.status === "fulfilled") {
+          setSalary(salRes.value);
+        } else {
+          setSalary(null);
+        }
+
+        if (payRes.status === "fulfilled") {
+          const empPayslips = (payRes.value || []).filter(
+            (p) => p.employee_id === employee.id || (employee.employee_code && p.employee_code === employee.employee_code)
+          );
+          setPayslips(empPayslips);
+        } else {
+          setPayslips([]);
+        }
+        setLoading(false);
+      })
+      .catch((err) => {
+        if (active) {
+          setError(err instanceof ApiError ? err.message : "Failed to load payroll details");
+          setLoading(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [employee.id, employee.employee_code]);
+
+  if (loading) {
+    return (
+      <Card className="p-8 text-center">
+        <Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" />
+        <p className="mt-2 text-xs text-slate-500">Loading payroll profile...</p>
+      </Card>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card className="p-6">
+        <div className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+          <AlertCircle size={15} className="shrink-0 text-rose-500" />
+          <span>{error}</span>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {salary ? (
+        <Card className="p-6">
+          <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-800">Current Salary Package</h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Effective from: {salary.effective_from || "Active"}
+              </p>
+            </div>
+            <Link to="/payroll/salary">
+              <Button variant="outline" className="h-8 px-3 text-xs">
+                Manage Salary
+              </Button>
+            </Link>
+          </div>
+
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4 text-xs">
+            <div className="rounded-lg bg-slate-50 p-3 border border-slate-100">
+              <p className="text-slate-400 text-[11px]">Basic Salary</p>
+              <p className="mt-1 font-semibold text-slate-800">{formatCurrency(salary.basic_salary)}</p>
+            </div>
+            <div className="rounded-lg bg-slate-50 p-3 border border-slate-100">
+              <p className="text-slate-400 text-[11px]">Allowances</p>
+              <p className="mt-1 font-semibold text-emerald-700">+{formatCurrency(salary.allowances)}</p>
+            </div>
+            <div className="rounded-lg bg-slate-50 p-3 border border-slate-100">
+              <p className="text-slate-400 text-[11px]">Deductions</p>
+              <p className="mt-1 font-semibold text-rose-700">-{formatCurrency(salary.deductions)}</p>
+            </div>
+            <div className="rounded-lg bg-indigo-50 p-3 border border-indigo-100">
+              <p className="text-indigo-600 font-medium text-[11px]">Net Salary (Gross - Ded)</p>
+              <p className="mt-1 font-bold text-indigo-900">{formatCurrency(salary.net_salary)}</p>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-4 sm:grid-cols-3 pt-3 border-t border-slate-100 text-xs">
+            <div>
+              <p className="text-slate-400">Payment Method</p>
+              <p className="mt-0.5 font-medium text-slate-700">{salary.payment_method}</p>
+            </div>
+            <div>
+              <p className="text-slate-400">Bank Name</p>
+              <p className="mt-0.5 font-medium text-slate-700">{salary.bank_name || "—"}</p>
+            </div>
+            <div>
+              <p className="text-slate-400">Bank Account</p>
+              <p className="mt-0.5 font-mono text-slate-700">{salary.bank_account_number || "—"}</p>
+            </div>
+          </div>
+        </Card>
+      ) : (
+        <Card className="p-6">
+          <EmptyState
+            icon={WalletCards}
+            title="Salary structure not configured"
+            description="No active salary configuration found for this employee."
+            action={
+              <Link to="/payroll/salary">
+                <Button variant="outline" className="h-8 px-3 text-xs">
+                  Configure Salary
+                </Button>
+              </Link>
+            }
+          />
+        </Card>
+      )}
+
+      <Card className="overflow-hidden">
+        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+          <h3 className="text-sm font-semibold text-slate-800">Generated Payslips</h3>
+          <Link to="/payroll/payslips" className="text-xs font-medium text-indigo-600 hover:text-indigo-800">
+            View All Payslips &rarr;
+          </Link>
+        </div>
+        {payslips.length === 0 ? (
+          <div className="p-6">
+            <EmptyState
+              icon={WalletCards}
+              title="No payslips generated"
+              description="No processed payslips found for this employee."
+            />
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold uppercase text-slate-500">
+                <tr>
+                  <th className="px-6 py-3">Period</th>
+                  <th className="px-6 py-3">Gross Pay</th>
+                  <th className="px-6 py-3">Deductions</th>
+                  <th className="px-6 py-3">Net Pay</th>
+                  <th className="px-6 py-3">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-700">
+                {payslips.map((ps) => (
+                  <tr key={ps.id} className="hover:bg-slate-50/60">
+                    <td className="px-6 py-3 font-medium text-slate-900">{formatPeriod(ps.period_key)}</td>
+                    <td className="px-6 py-3">{formatCurrency(ps.gross_pay)}</td>
+                    <td className="px-6 py-3 text-rose-600">-{formatCurrency(ps.deductions)}</td>
+                    <td className="px-6 py-3 font-semibold text-slate-900">{formatCurrency(ps.net_pay)}</td>
+                    <td className="px-6 py-3">
+                      <Badge variant={getPaymentStatusBadgeVariant(ps.payment_status)}>
+                        {ps.payment_status}
+                      </Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
   );
 }

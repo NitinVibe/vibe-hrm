@@ -58,11 +58,12 @@ export default function PayrollProcessing() {
 
   async function handleProcess(runId: string) {
     try {
+      setError(null);
       setProcessingRunId(runId);
       await apiClient.payroll.processRun(runId);
       await loadRuns();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Calculation failed");
+      setError(err instanceof Error ? err.message : "Calculation failed");
     } finally {
       setProcessingRunId(null);
     }
@@ -73,11 +74,12 @@ export default function PayrollProcessing() {
       return;
     }
     try {
+      setError(null);
       setProcessingRunId(runId);
       await apiClient.payroll.deleteRun(runId);
       await loadRuns();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Failed to delete draft run");
+      setError(err instanceof Error ? err.message : "Failed to delete draft run");
     } finally {
       setProcessingRunId(null);
     }
@@ -89,15 +91,16 @@ export default function PayrollProcessing() {
     );
     if (reason === null) return;
     if (reason.trim().length < 3) {
-      alert("A valid reversal reason of at least 3 characters is required.");
+      setError("A valid reversal reason of at least 3 characters is required.");
       return;
     }
     try {
+      setError(null);
       setProcessingRunId(runId);
       await apiClient.payroll.returnToDraft(runId, reason.trim());
       await loadRuns();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Failed to return run to draft");
+      setError(err instanceof Error ? err.message : "Failed to return run to draft");
     } finally {
       setProcessingRunId(null);
     }

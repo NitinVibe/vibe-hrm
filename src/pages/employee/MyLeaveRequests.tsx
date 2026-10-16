@@ -124,10 +124,11 @@ export default function MyLeaveRequests() {
   const handleCancel = async (requestId: string) => {
     if (!confirm("Are you sure you want to cancel this leave request?")) return;
     try {
+      setError(null);
       await apiClient.leave.cancel(requestId);
       await refreshData();
     } catch (err) {
-      alert("Failed to cancel leave request: " + (err instanceof Error ? err.message : "Error"));
+      setError(err instanceof Error ? err.message : "Failed to cancel leave request");
     }
   };
 

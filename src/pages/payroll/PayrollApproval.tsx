@@ -71,11 +71,12 @@ export default function PayrollApproval() {
       return;
     }
     try {
+      setError(null);
       setActionRunId(runId);
       await apiClient.payroll.approveRun(runId);
       await loadRuns();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Failed to approve payroll run");
+      setError(err instanceof Error ? err.message : "Failed to approve payroll run");
     } finally {
       setActionRunId(null);
     }
@@ -102,15 +103,16 @@ export default function PayrollApproval() {
     );
     if (reason === null) return;
     if (reason.trim().length < 3) {
-      alert("A valid reversal reason of at least 3 characters is required.");
+      setError("A valid reversal reason of at least 3 characters is required.");
       return;
     }
     try {
+      setError(null);
       setActionRunId(runId);
       await apiClient.payroll.returnToDraft(runId, reason.trim());
       await loadRuns();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Failed to return run to draft");
+      setError(err instanceof Error ? err.message : "Failed to return run to draft");
     } finally {
       setActionRunId(null);
     }
@@ -122,15 +124,16 @@ export default function PayrollApproval() {
     );
     if (reason === null) return;
     if (reason.trim().length < 3) {
-      alert("A valid reversal reason of at least 3 characters is required.");
+      setError("A valid reversal reason of at least 3 characters is required.");
       return;
     }
     try {
+      setError(null);
       setActionRunId(runId);
       await apiClient.payroll.reverseApproval(runId, reason.trim());
       await loadRuns();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Failed to reverse approval");
+      setError(err instanceof Error ? err.message : "Failed to reverse approval");
     } finally {
       setActionRunId(null);
     }
@@ -139,11 +142,12 @@ export default function PayrollApproval() {
   async function viewPayslips(run: PayrollRun) {
     setSelectedRun(run);
     try {
+      setError(null);
       setPayslipsLoading(true);
       const data = await apiClient.payroll.getRunPayslips(run.id);
       setRunPayslips(data);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Failed to fetch payslips");
+      setError(err instanceof Error ? err.message : "Failed to fetch payslips");
     } finally {
       setPayslipsLoading(false);
     }

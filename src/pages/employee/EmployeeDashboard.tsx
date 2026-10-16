@@ -35,6 +35,8 @@ export default function EmployeeDashboard() {
   const [todayRecord, setTodayRecord] = useState<AttendanceRecord | null>(null);
   const [salary, setSalary] = useState<EmployeeSalary | null>(null);
   const [payslips, setPayslips] = useState<Payslip[]>([]);
+  const [leaveBalance, setLeaveBalance] = useState<number>(0);
+  const [pendingLeavesCount, setPendingLeavesCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
@@ -44,10 +46,12 @@ export default function EmployeeDashboard() {
       setIsLoading(true);
       try {
         const todayIso = getTodayISODate();
-        const [myAtt, mySal, myPays] = await Promise.all([
+        const [myAtt, mySal, myPays, myBals, myReqs] = await Promise.all([
           apiClient.attendance.getMy({ limit: 5 }).catch(() => []),
           apiClient.payroll.getMySalary().catch(() => null),
           apiClient.payroll.getMyPayslips().catch(() => []),
+          apiClient.leave.getMyBalances().catch(() => []),
+          apiClient.leave.getMyRequests("PENDING").catch(() => []),
         ]);
 
         if (isMounted) {
@@ -55,6 +59,10 @@ export default function EmployeeDashboard() {
           setTodayRecord(matched || null);
           setSalary(mySal);
           setPayslips(myPays);
+
+          const totalAvail = myBals.reduce((sum, b) => sum + Number(b.available_days || 0), 0);
+          setLeaveBalance(totalAvail);
+          setPendingLeavesCount(myReqs.length);
         }
       } finally {
         if (isMounted) {
@@ -96,23 +104,31 @@ export default function EmployeeDashboard() {
 
         <StatCard
           title="Leave Balance"
-          value="0"
-          description="Leave module (Phase 2)"
+          value={isLoading ? "—" : String(leaveBalance)}
+          description="Available leave days"
           icon={CalendarDays}
         />
 
         <StatCard
           title="Pending Requests"
-          value="0"
-          description="Requests (Phase 2)"
+          value={isLoading ? "—" : String(pendingLeavesCount)}
+          description="Leaves awaiting approval"
           icon={ClipboardList}
         />
 
         <StatCard
-          title="Tasks"
-          value="0"
-          description="Projects/Tasks (Phase 2)"
-          icon={ListTodo}
+          title="Net Take-Home"
+          value={
+            isLoading
+              ? "—"
+              : latestPayslip
+              ? formatCurrency(latestPayslip.net_pay)
+              : salary
+              ? formatCurrency(salary.net_salary)
+              : "—"
+          }
+          description={latestPayslip ? `Latest: ${latestPayslip.period_key}` : "Monthly compensation"}
+          icon={IndianRupee}
         />
       </div>
 

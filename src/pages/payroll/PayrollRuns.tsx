@@ -153,6 +153,7 @@ export default function PayrollRuns() {
 
   async function handleProcess(runId: string) {
     try {
+      setError(null);
       setActionRunId(runId);
       await apiClient.payroll.processRun(runId);
       await loadRuns();
@@ -160,7 +161,7 @@ export default function PayrollRuns() {
         await viewPayslips(runId);
       }
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Failed to process payroll run");
+      setError(err instanceof Error ? err.message : "Failed to process payroll run");
     } finally {
       setActionRunId(null);
     }
@@ -171,11 +172,12 @@ export default function PayrollRuns() {
       return;
     }
     try {
+      setError(null);
       setActionRunId(runId);
       await apiClient.payroll.approveRun(runId);
       await loadRuns();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Failed to approve payroll run");
+      setError(err instanceof Error ? err.message : "Failed to approve payroll run");
     } finally {
       setActionRunId(null);
     }
@@ -245,11 +247,12 @@ export default function PayrollRuns() {
       return;
     }
     try {
+      setError(null);
       setActionRunId(runId);
       await apiClient.payroll.deleteRun(runId);
       await loadRuns();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Failed to delete draft run");
+      setError(err instanceof Error ? err.message : "Failed to delete draft run");
     } finally {
       setActionRunId(null);
     }
@@ -261,15 +264,16 @@ export default function PayrollRuns() {
     );
     if (reason === null) return;
     if (reason.trim().length < 3) {
-      alert("A valid reversal reason of at least 3 characters is required.");
+      setError("A valid reversal reason of at least 3 characters is required.");
       return;
     }
     try {
+      setError(null);
       setActionRunId(runId);
       await apiClient.payroll.returnToDraft(runId, reason.trim());
       await loadRuns();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Failed to return run to draft");
+      setError(err instanceof Error ? err.message : "Failed to return run to draft");
     } finally {
       setActionRunId(null);
     }
@@ -281,26 +285,24 @@ export default function PayrollRuns() {
     );
     if (reason === null) return;
     if (reason.trim().length < 3) {
-      alert("A valid reversal reason of at least 3 characters is required.");
+      setError("A valid reversal reason of at least 3 characters is required.");
       return;
     }
     try {
+      setError(null);
       setActionRunId(runId);
       await apiClient.payroll.reverseApproval(runId, reason.trim(), "PROCESSED");
       await loadRuns();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Failed to reverse approval");
+      setError(err instanceof Error ? err.message : "Failed to reverse approval");
     } finally {
       setActionRunId(null);
     }
   }
 
   function handlePaidReversalInfo() {
-    alert(
-      "PAID Payroll Run Protection:\n\n" +
-      "This payroll run is in 'PAID' status and reflects finalized accounting disbursement.\n\n" +
-      "Under financial and statutory compliance standards, PAID cycles cannot be deleted or reset to draft. " +
-      "Any salary corrections, bonus clawbacks, or retroactive adjustments must be applied through compensation adjustment items in the subsequent payroll cycle."
+    setError(
+      "PAID Payroll Run Protection: Under financial and statutory compliance standards, PAID cycles cannot be deleted or reset to draft. Any salary corrections, bonus clawbacks, or retroactive adjustments must be applied through compensation adjustment items in subsequent cycles."
     );
   }
 
@@ -309,11 +311,12 @@ export default function PayrollRuns() {
     if (!run) return;
     setSelectedRun(run);
     try {
+      setError(null);
       setPayslipsLoading(true);
       const data = await apiClient.payroll.getRunPayslips(runId);
       setRunPayslips(data);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Failed to fetch payslips");
+      setError(err instanceof Error ? err.message : "Failed to fetch payslips");
     } finally {
       setPayslipsLoading(false);
     }

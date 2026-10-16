@@ -69,12 +69,13 @@ export default function LeaveApprovals() {
   const handleAction = async (requestId: string, action: "APPROVE" | "REJECT", reason?: string) => {
     setProcessingId(requestId);
     try {
+      setError(null);
       await apiClient.leave.action(requestId, { action, action_reason: reason });
       setRejectModalReq(null);
       setRejectReason("");
       await refreshRequests();
     } catch (err) {
-      alert("Failed to process leave action: " + (err instanceof Error ? err.message : "Error"));
+      setError(err instanceof Error ? err.message : "Failed to process leave action");
     } finally {
       setProcessingId(null);
     }

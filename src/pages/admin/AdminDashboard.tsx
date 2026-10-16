@@ -24,6 +24,8 @@ export default function AdminDashboard() {
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [departments, setDepartments] = useState<Department[]>([]);
     const [todaySummary, setTodaySummary] = useState<TodayAttendanceSummary | null>(null);
+    const [onLeaveCount, setOnLeaveCount] = useState<number>(0);
+    const [activeRunsCount, setActiveRunsCount] = useState<number>(0);
     const [isLoading, setIsLoading] = useState<boolean>(true);
 
     useEffect(() => {
@@ -32,16 +34,27 @@ export default function AdminDashboard() {
         async function fetchDashboardData() {
             try {
                 setIsLoading(true);
-                const [empData, deptData, attData] = await Promise.all([
+                const todayIso = new Date().toISOString().split("T")[0];
+                const [empData, deptData, attData, leaveData, payrollData] = await Promise.all([
                     apiClient.employees.list().catch(() => []),
                     apiClient.departments.list().catch(() => []),
                     apiClient.attendance.getTodaySummary().catch(() => null),
+                    apiClient.leave.listRequests(undefined, "APPROVED").catch(() => []),
+                    apiClient.payroll.listRuns().catch(() => []),
                 ]);
 
                 if (isMounted) {
                     setEmployees(empData);
                     setDepartments(deptData);
                     setTodaySummary(attData);
+
+                    // Count approved leaves covering today
+                    const onLeaveToday = leaveData.filter((r) => {
+                        return r.status === "APPROVED" && r.start_date <= todayIso && r.end_date >= todayIso;
+                    }).length;
+                    setOnLeaveCount(onLeaveToday);
+
+                    setActiveRunsCount(payrollData.length);
                 }
             } finally {
                 if (isMounted) {
@@ -88,21 +101,21 @@ export default function AdminDashboard() {
                 <StatCard
                     title="Present Today"
                     value={isLoading ? "—" : String(presentToday)}
-                    description="Attendance"
+                    description="Attendance logged"
                     icon={Clock3}
                 />
 
                 <StatCard
-                    title="On Leave"
-                    value="0"
-                    description="Leave module (Phase 2)"
+                    title="On Leave Today"
+                    value={isLoading ? "—" : String(onLeaveCount)}
+                    description="Approved leaves"
                     icon={CalendarDays}
                 />
 
                 <StatCard
-                    title="Open Jobs"
-                    value="0"
-                    description="Recruitment (Phase 2)"
+                    title="Payroll Runs"
+                    value={isLoading ? "—" : String(activeRunsCount)}
+                    description="Total payroll cycles"
                     icon={BriefcaseBusiness}
                 />
             </div>
